@@ -13,3 +13,6 @@
 /test-datasheet*.png
 !/docs/preview-*.png
 mygo_windows_*.syso
+
+# release staging and build outputs
+/dist/

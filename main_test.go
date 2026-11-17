@@ -77,13 +77,16 @@ func TestPDFScanner(t *testing.T) {
 	}
 
 	matches := scanner.FindForBHS("100917800")
-	if len(matches) != 3 {
-		t.Fatalf("expected 3 matches for 100917800, got %d", len(matches))
+	// The three files of this BHS number have identical byte sizes, so the
+	// size-based duplicate check shows only the first of them.
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 deduplicated match for 100917800, got %d", len(matches))
 	}
-
-	// Prefix match should be first
 	if matches[0].Name != "100917800_V1_CN.pdf" && matches[0].Name != "100917800_VNA_EN.pdf" {
 		t.Errorf("expected prefix match first, got %s", matches[0].Name)
+	}
+	if hidden := scanner.DedupedGroupCount("100917800"); hidden != 2 {
+		t.Errorf("expected 2 hidden duplicates, got %d", hidden)
 	}
 
 	// Case-insensitive test

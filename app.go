@@ -21,23 +21,38 @@ type app struct {
 	loading bool
 	loadErr string
 
+	tray      *mygo.Tray
+	trayReady bool
+	quitting  bool
+	trayError string
+
 	summary Summary
 	parts   []*Part
 	books   []WorkbookInfo
 
-	query         string
-	workbookSel   int
-	sheetSel      int
-	statusSel     int
-	sortLabel     string
-	results       []*Part
-	resultSel     int
-	inspectorOpen bool
+	query          string
+	workbookSel    int
+	sheetSel       int
+	sheetChoice    string
+	sheetChoiceFor string
+	sheetChoices   []string
+	sortLabel      string
+	sortDesc       bool
+	results        []*Part
+	resultSel      int
+	inspectorOpen  bool
+
+	// Filtering inside the part list beyond the sidebar's workbook and sheet.
+	filterOpen     bool
+	filterStatus   int    // index into filterStatusOptions, 0 = keep a.StatusSel
+	filterCategory string // category filter, "" = all
+	filterMfr      string // manufacturer contains
+	filterTypes    int    // 0 all, 1 has datasheet, 2 no datasheet
+	filterStats    filterStats
 
 	workbookList ui.ListState
 	resultList   ui.ListState
 	searchHandle ui.Handle
-	sheetScroll  ui.ScrollState
 	detailScroll ui.ScrollState
 
 	formOpen   bool
@@ -49,11 +64,22 @@ type app struct {
 	exeDir              string
 	cfg                 Config
 	pdfScanner          *PDFScanner
+	pdfScanStart        time.Time
 	datasheetModalOpen  bool
 	datasheetPathsText  string
 	masterlistPathsText string
 	datasheetStatusMsg  string
-	settingsTab         int // 0: PDF 手册, 1: Excel 原表
+	settingsTab         int // 0: PDF 手册, 1: Excel 原表, 2: 常规选项
+
+	fileListOpen         bool
+	fileListQuery        string
+	fileListScroll       ui.ScrollState
+	fileListList         ui.ListState
+	fileListSel          int
+	fileListDisplay      []PDFFile
+	fileListStatus       string // last manual sync result
+	fileListOnlyThisPart bool
+	fileListSyncing      bool
 
 	lightTheme    bool
 	syncModalOpen bool
@@ -61,10 +87,24 @@ type app struct {
 	syncDryRun    bool
 	syncResult    *SyncResult
 	syncErr       string
+	scanDoneAt    string
+	pendingToast  string
+	// settleScanOnLaunch remembers the last index sync, so the first launch
+	// of a day refreshes it and later launches open from the cache.
+	settleScanOnLaunch bool
 }
 
-var statusOptions = []string{"全部", "有效", "停用", "历史"}
-var sortOptions = []string{"原表顺序", "BHS 编号", "最近修改"}
+// filterStats reports how many parts the active filters kept and why a
+// result set may be empty.
+type filterStats struct {
+	Total            int
+	Kept             int
+	WithDatasheet    int
+	WithoutDatasheet int
+}
+
+var filterStatusOptions = []string{"全部状态", "有效", "停用", "历史"}
+var filterTypeOptions = []string{"全部器件", "有数据手册", "无数据手册"}
 
 var statusLabels = map[string]string{
 	"active":   "有效",
@@ -73,47 +113,47 @@ var statusLabels = map[string]string{
 }
 
 var categoryNames = map[string]string{
-	"Accessories":           "附件",
-	"Air Conditioner":       "空调",
-	"Aluminum Plate":        "铝板",
-	"Battery":               "电池",
-	"Bus bar":               "母线",
-	"Cable & Wire":          "电缆与导线",
-	"Circuit Breaker":       "断路器",
-	"Controller":            "控制器",
-	"Copacitor":             "电容",
-	"DC Power Supply Unit":  "直流电源",
-	"Diode":                 "二极管",
-	"Display & Light":       "显示与照明",
-	"Electronic":            "电子元件",
-	"Emergency Stop Module": "急停模块",
-	"Encoder":               "编码器",
-	"Fan":                   "风扇",
-	"Fuse System":           "熔断系统",
-	"Heavy Duty Connectors": "重载连接器",
-	"Horn":                  "蜂鸣器",
-	"Inactive Parts":        "停用件",
-	"Isolation":             "隔离器件",
-	"Limit Switch":          "限位开关",
-	"Moeller":               "穆勒",
-	"Motor Protect Switch":  "电机保护开关",
-	"Motors":                "电机",
-	"Network":               "网络",
-	"ODM":                   "ODM",
-	"PLC":                   "PLC",
-	"Push Button":           "按钮",
-	"Relay & Contactor":     "继电器与接触器",
-	"Schneider":             "施耐德",
-	"Sensor":                "传感器",
-	"Siemens":               "西门子",
-	"Socket":                "插座",
-	"Switch":                "开关",
-	"System Components":     "系统组件",
-	"Terminal Block":        "端子排",
-	"Transformer":           "变压器",
-	"UPS":                   "UPS",
-	"Vacuum Generator":      "真空发生器",
-	"Valve":                 "阀门",
+	"Accessories":             "附件",
+	"Air Conditioner":         "空调",
+	"Aluminum Plate":          "铝板",
+	"Battery":                 "电池",
+	"Bus bar":                 "母线",
+	"Cable & Wire":            "电缆与导线",
+	"Circuit Breaker":         "断路器",
+	"Controller":              "控制器",
+	"Copacitor":               "电容",
+	"DC Power Supply Unit":    "直流电源",
+	"Diode":                   "二极管",
+	"Display & Light":         "显示与照明",
+	"Electronic":              "电子元件",
+	"Emergency Stop Module":   "急停模块",
+	"Encoder":                 "编码器",
+	"Fan":                     "风扇",
+	"Fuse System":             "熔断系统",
+	"Heavy Duty Connectors":   "重载连接器",
+	"Horn":                    "蜂鸣器",
+	"Inactive Parts":          "停用件",
+	"Isolation":               "隔离器件",
+	"Limit Switch":            "限位开关",
+	"Moeller":                 "穆勒",
+	"Motor Protect Switch":    "电机保护开关",
+	"Motors":                  "电机",
+	"Network":                 "网络",
+	"ODM":                     "ODM",
+	"PLC":                     "PLC",
+	"Push Button":             "按钮",
+	"Relay & Contactor":       "继电器与接触器",
+	"Schneider":               "施耐德",
+	"Sensor":                  "传感器",
+	"Siemens":                 "西门子",
+	"Socket":                  "插座",
+	"Switch":                  "开关",
+	"System Components":       "系统组件",
+	"Terminal Block":          "端子排",
+	"Transformer":             "变压器",
+	"UPS":                     "UPS",
+	"Vacuum Generator":        "真空发生器",
+	"Valve":                   "阀门",
 	"Wire Channel & DIN Rail": "线槽与导轨",
 }
 
@@ -146,8 +186,8 @@ func newApp(dbPath, initialQuery string, openSettings bool) *app {
 		loading:             true,
 		workbookSel:         -1,
 		sheetSel:            -1,
-		statusSel:           0,
-		sortLabel:           sortOptions[0],
+		sortLabel:           sortModeLabel(cfg.SortMode),
+		sortDesc:            cfg.SortDesc,
 		query:               initialQuery,
 		resultSel:           -1,
 		inspectorOpen:       true,
@@ -155,7 +195,17 @@ func newApp(dbPath, initialQuery string, openSettings bool) *app {
 		datasheetPathsText:  strings.Join(cfg.DatasheetPaths, "\n"),
 		masterlistPathsText: strings.Join(cfg.MasterlistPaths, "\n"),
 		lightTheme:          cfg.Theme == "light",
+		filterCategory:      cfg.CategoryFilter,
+		filterMfr:           cfg.ManufacturerFilter,
+		filterTypes:         boolToIndex(cfg.DatasheetOnly),
 	}
+}
+
+func boolToIndex(on bool) int {
+	if on {
+		return 1
+	}
+	return 0
 }
 
 func (a *app) loadData(win *mygo.Window) {
@@ -188,15 +238,32 @@ func (a *app) loadData(win *mygo.Window) {
 		} else {
 			a.refreshResults(0)
 		}
+		a.refreshTray()
 	})
 
-	// Scan PDF datasheets in background so window opens instantly without blocking startup
-	go func() {
-		a.pdfScanner.Scan()
-		if a.win != nil {
-			a.win.Update(func() {})
-		}
-	}()
+	// A cached datasheet index opens instantly. It is refreshed on launch
+	// only when it is older than the expiry setting, which keeps a network
+	// share from being walked at every start.
+	if !a.pdfScanner.HasIndex() || a.pdfIndexExpired() {
+		a.scanDatasheetsAsync(false)
+	}
+	if a.fileListOpen {
+		a.refreshFileListDisplay()
+	}
+}
+
+// pdfIndexExpired reports whether the cached index is older than the expiry
+// setting; 0 minutes restores the index on every start.
+func (a *app) pdfIndexExpired() bool {
+	at := a.pdfScanner.ScannedAt()
+	if at.IsZero() {
+		return true
+	}
+	minutes := a.cfg.PDFIndexMaxAgeMinutes
+	if minutes <= 0 {
+		return true
+	}
+	return time.Since(at) > time.Duration(minutes)*time.Minute
 }
 
 func (a *app) selectedBook() *WorkbookInfo {
@@ -224,6 +291,30 @@ func (a *app) selectedPart() *Part {
 	return nil
 }
 
+// effectiveStatusFilter is the status the list filters on: index 0 of
+// filterStatusOptions keeps every status.
+func (a *app) effectiveStatusFilter() int {
+	return a.filterStatus
+}
+
+func matchesStatus(status string, sel int) bool {
+	switch sel {
+	case 1:
+		return status == "active"
+	case 2:
+		return status == "inactive"
+	case 3:
+		return status == "obsolete"
+	default:
+		return true
+	}
+}
+
+// filterActive reports whether any list filter beyond the sidebar is on.
+func (a *app) filterActive() bool {
+	return a.filterStatus > 0 || a.filterCategory != "" || a.filterMfr != "" || a.filterTypes > 0
+}
+
 func (a *app) refreshResults(keepID int64) {
 	filtered := make([]*Part, 0, len(a.parts))
 	q := strings.ToLower(strings.TrimSpace(a.query))
@@ -240,7 +331,11 @@ func (a *app) refreshResults(keepID int64) {
 		selectedFile = book.SourceFile
 	}
 	sheet := a.selectedSheet()
+	statusFilter := a.effectiveStatusFilter()
+	catFilter := strings.ToLower(a.filterCategory)
+	mfrFilter := strings.ToLower(strings.TrimSpace(a.filterMfr))
 
+	stats := filterStats{Total: len(a.parts)}
 	for _, p := range a.parts {
 		if selectedCategory != "" && p.Category != selectedCategory && p.SourceFile != selectedFile {
 			continue
@@ -250,21 +345,14 @@ func (a *app) refreshResults(keepID int64) {
 				continue
 			}
 		}
-		if a.statusSel > 0 {
-			switch a.statusSel {
-			case 1:
-				if p.Status != "active" {
-					continue
-				}
-			case 2:
-				if p.Status != "inactive" {
-					continue
-				}
-			case 3:
-				if p.Status != "obsolete" {
-					continue
-				}
-			}
+		if !matchesStatus(p.Status, statusFilter) {
+			continue
+		}
+		if catFilter != "" && strings.ToLower(p.Category) != catFilter && strings.ToLower(categoryName(p.Category)) != catFilter {
+			continue
+		}
+		if mfrFilter != "" && !strings.Contains(strings.ToLower(p.Manufacturer), mfrFilter) {
+			continue
 		}
 		if len(terms) > 0 {
 			blob := p.SearchBlob()
@@ -286,29 +374,35 @@ func (a *app) refreshResults(keepID int64) {
 				continue
 			}
 		}
+		if a.filterTypes > 0 {
+			hasPDF := a.pdfScanner.HasMatch(p.BHSNo)
+			if hasPDF {
+				stats.WithDatasheet++
+			} else {
+				stats.WithoutDatasheet++
+			}
+			if a.filterTypes == 1 && !hasPDF {
+				continue
+			}
+			if a.filterTypes == 2 && hasPDF {
+				continue
+			}
+		}
 		filtered = append(filtered, p)
 	}
+	stats.Kept = len(filtered)
+	a.filterStats = stats
 
-	switch a.sortLabel {
-	case "BHS 编号":
-		slices.SortFunc(filtered, func(a, b *Part) int {
-			return strings.Compare(strings.ToLower(a.BHSNo), strings.ToLower(b.BHSNo))
-		})
-	case "最近修改":
-		slices.SortFunc(filtered, func(a, b *Part) int {
-			return strings.Compare(b.UpdatedAt, a.UpdatedAt)
-		})
-	default:
-		slices.SortFunc(filtered, func(a, b *Part) int {
-			if a.SourceFile != b.SourceFile {
-				return strings.Compare(a.SourceFile, b.SourceFile)
-			}
-			if a.SourceSheet != b.SourceSheet {
-				return strings.Compare(a.SourceSheet, b.SourceSheet)
-			}
-			return int(a.SourceRow - b.SourceRow)
-		})
-	}
+	sortMode := sortModeFromLabel(a.sortLabel)
+	slices.SortFunc(filtered, func(x, y *Part) int {
+		c := compareParts(sortMode, x, y)
+		if a.sortDesc {
+			return -c
+		}
+		return c
+	})
+
+	a.results = filtered
 
 	a.results = filtered
 
@@ -327,31 +421,69 @@ func (a *app) refreshResults(keepID int64) {
 	a.resultSel = newSel
 }
 
+// compareParts orders two parts by a sort mode, always ascending; the caller
+// reverses it for a descending list.
+func compareParts(mode SortMode, x, y *Part) int {
+	switch mode {
+	case SortBHS:
+		if c := strings.Compare(strings.ToLower(x.BHSNo), strings.ToLower(y.BHSNo)); c != 0 {
+			return c
+		}
+	case SortName:
+		if c := strings.Compare(strings.ToLower(x.Name()), strings.ToLower(y.Name())); c != 0 {
+			return c
+		}
+	case SortManufacturer:
+		if c := strings.Compare(strings.ToLower(x.Manufacturer), strings.ToLower(y.Manufacturer)); c != 0 {
+			return c
+		}
+	case SortSpec:
+		if c := strings.Compare(strings.ToLower(x.Spec), strings.ToLower(y.Spec)); c != 0 {
+			return c
+		}
+	case SortUpdated:
+		if c := strings.Compare(y.UpdatedAt, x.UpdatedAt); c != 0 {
+			return c
+		}
+	}
+	// A tie-break that keeps the list stable and familiar: source order.
+	if x.SourceFile != y.SourceFile {
+		return strings.Compare(x.SourceFile, y.SourceFile)
+	}
+	if x.SourceSheet != y.SourceSheet {
+		return strings.Compare(x.SourceSheet, y.SourceSheet)
+	}
+	if x.SourceRow != y.SourceRow {
+		return int(x.SourceRow - y.SourceRow)
+	}
+	return strings.Compare(x.BHSNo, y.BHSNo)
+}
+
 func expandQueryToken(token string) []string {
 	variants := []string{token}
 	synonyms := map[string][]string{
-		"断路器": {"breaker", "空开", "circuit breaker"},
-		"空开":   {"断路器", "breaker", "circuit breaker"},
-		"breaker": {"断路器", "空开"},
-		"端子":   {"terminal", "wago", "万可"},
+		"断路器":      {"breaker", "空开", "circuit breaker"},
+		"空开":       {"断路器", "breaker", "circuit breaker"},
+		"breaker":  {"断路器", "空开"},
+		"端子":       {"terminal", "wago", "万可"},
 		"terminal": {"端子", "wago"},
-		"继电器": {"relay", "contactor", "接触器"},
-		"relay": {"继电器", "接触器"},
-		"接触器": {"contactor", "relay", "继电器"},
-		"电源":   {"power supply", "dc power", "24v"},
-		"变压器": {"transformer"},
-		"电机":   {"motor", "马达"},
-		"马达":   {"motor", "电机"},
-		"开关":   {"switch"},
-		"传感器": {"sensor"},
-		"按钮":   {"push button", "button"},
-		"铝板":   {"aluminum", "plate", "anodized"},
-		"触摸屏": {"hmi", "touch panel", "display"},
-		"万可":   {"wago"},
-		"西门子": {"siemens"},
-		"施耐德": {"schneider"},
-		"魏德米勒": {"weidmuller"},
-		"菲尼克斯": {"phoenix"},
+		"继电器":      {"relay", "contactor", "接触器"},
+		"relay":    {"继电器", "接触器"},
+		"接触器":      {"contactor", "relay", "继电器"},
+		"电源":       {"power supply", "dc power", "24v"},
+		"变压器":      {"transformer"},
+		"电机":       {"motor", "马达"},
+		"马达":       {"motor", "电机"},
+		"开关":       {"switch"},
+		"传感器":      {"sensor"},
+		"按钮":       {"push button", "button"},
+		"铝板":       {"aluminum", "plate", "anodized"},
+		"触摸屏":      {"hmi", "touch panel", "display"},
+		"万可":       {"wago"},
+		"西门子":      {"siemens"},
+		"施耐德":      {"schneider"},
+		"魏德米勒":     {"weidmuller"},
+		"菲尼克斯":     {"phoenix"},
 	}
 	for key, syns := range synonyms {
 		if strings.Contains(token, key) {
@@ -510,6 +642,8 @@ func (a *app) reload(keepID int64) error {
 	a.parts = parts
 	a.books = books
 	a.summary = summary
+	a.sheetChoices = nil
+	a.sheetChoiceFor = ""
 	a.workbookSel = -1
 	if selectedFile != "" {
 		for i := range a.books {
@@ -527,6 +661,7 @@ func (a *app) reload(keepID int64) error {
 		}
 	}
 	a.refreshResults(keepID)
+	a.refreshTray()
 	return nil
 }
 
@@ -583,6 +718,7 @@ func (a *app) saveDatasheetSettings(c *ui.Context) {
 	if len(dsPaths) == 0 {
 		dsPaths = []string{`..\PartPDF_merged`, `PartPDF_merged`}
 	}
+	pathsChanged := !slices.EqualFunc(a.cfg.DatasheetPaths, dsPaths, strings.EqualFold)
 	a.cfg.DatasheetPaths = dsPaths
 
 	// Parse masterlist paths
@@ -599,21 +735,40 @@ func (a *app) saveDatasheetSettings(c *ui.Context) {
 	}
 	a.cfg.MasterlistPaths = mlPaths
 
+	// A configured reader must be an existing executable; a relative path is
+	// resolved against the program directory.
+	reader := strings.TrimSpace(a.cfg.PDFReaderPath)
+	if reader != "" {
+		if !filepath.IsAbs(reader) {
+			reader = filepath.Join(a.exeDir, reader)
+		}
+		if abs, err := filepath.Abs(reader); err == nil {
+			reader = abs
+		}
+		if fi, err := os.Stat(reader); err != nil || fi.IsDir() {
+			a.datasheetStatusMsg = "只读阅读器路径不存在：" + reader
+			return
+		}
+		a.cfg.PDFReaderPath = reader
+	}
+
 	if err := saveConfig(a.exeDir, a.cfg); err != nil {
 		a.datasheetStatusMsg = "保存配置文件失败: " + err.Error()
 		return
 	}
-	a.pdfScanner.SetPaths(dsPaths)
-	a.pdfScanner.Scan()
-	count := a.pdfScanner.Count()
-	c.Toast(fmt.Sprintf("路径配置已更新并保存，手册库检索到 %s 份 PDF", formatInt(count)))
+	a.applyTraySetting()
+	if pathsChanged {
+		a.pdfScanner.SetPaths(dsPaths)
+		a.scanDatasheetsAsync(true)
+	} else {
+		c.Toast("路径配置已更新并保存")
+	}
 	a.datasheetModalOpen = false
 }
 
+// refreshDatasheetScan starts a manual, asynchronous index sync.
 func (a *app) refreshDatasheetScan(c *ui.Context) {
-	a.pdfScanner.Scan()
-	count := a.pdfScanner.Count()
-	c.Toast(fmt.Sprintf("扫描完成，检索到 %s 份 PDF", formatInt(count)))
+	a.scanDatasheetsAsync(true)
 }
 
 func (a *app) openExcelFile(c *ui.Context, filename string) {

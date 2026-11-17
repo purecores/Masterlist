@@ -17,7 +17,7 @@ import (
 //go:embed data/masterlist.example.db
 var seedDatabase []byte
 
-//go:embed resources/mygo-sqlite3.dll
+//go:embed assets/mygo-sqlite3.dll
 var embeddedSQLiteDLL []byte
 
 func main() {
@@ -90,6 +90,7 @@ func main() {
 		if len(appIconBytes) > 0 {
 			_ = win.SetIcon(appIconBytes)
 		}
+		win.OnClose(a.handleClose)
 		if runtime.GOOS == "darwin" {
 			mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 				{Role: mygo.RoleAppMenu},
@@ -97,10 +98,15 @@ func main() {
 				{Role: mygo.RoleWindowMenu},
 			}))
 		}
+		// The tray icon lives as long as the app: closing the window hides
+		// it there when the setting asks for that.
+		a.setupTray()
 		if a.loadErr == "" {
 			go a.loadData(win)
 		}
 		mygo.App.OnQuit(func() {
+			a.quitting = true
+			a.destroyTray()
 			if a.store != nil {
 				_ = a.store.Close()
 			}

@@ -1,0 +1,15 @@
+/build/
+/.mygo/
+/data/masterlist.db-journal
+/data/masterlist.db-shm
+/data/masterlist.db-wal
+/data/masterlist.db
+/config.json
+/window-state.json
+/*.exe
+/*.exe~
+/mygo-sqlite3.dll
+/screenshot*.png
+/test-datasheet*.png
+!/docs/preview-*.png
+mygo_windows_*.syso

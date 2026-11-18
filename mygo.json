@@ -1,7 +1,7 @@
 {
   "name": "BHS Masterlist",
   "identifier": "com.bhs.masterlist",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "icon": "resources/icon.png",
   "out": "build"
 }

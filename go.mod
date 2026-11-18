@@ -6,6 +6,7 @@ tool github.com/egoist/mygo/cmd/mygo
 
 require (
 	github.com/egoist/mygo v0.7.3
+	github.com/shakinm/xlsReader v0.9.12
 	github.com/xuri/excelize/v2 v2.11.1
 	golang.org/x/image v0.46.0
 )
@@ -13,6 +14,7 @@ require (
 require (
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
+	github.com/metakeule/fmtdate v1.1.2 // indirect
 	github.com/richardlehane/mscfb v1.0.9 // indirect
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/tiendc/go-deepcopy v1.7.2 // indirect

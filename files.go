@@ -180,15 +180,15 @@ type fileRow struct {
 	count  int
 }
 
-// openPDFInDefault asks the shell to open a PDF; the setting decides whether
-// the file itself or a read-only duplicate is opened.
+// openPDFInDefault opens a datasheet; the setting decides whether the file
+// itself or a read-only duplicate is opened.
 func (a *app) openPDFInDefault(c *ui.Context, path string) {
 	if err := a.OpenDatasheetPDF(path); err != nil {
 		c.Toast("打开 PDF 失败: " + err.Error())
 		return
 	}
 	if a.cfg.ReadOnlyPDF {
-		c.Toast("已以只读副本打开手册")
+		c.Toast("已以只读方式打开手册")
 	}
 }
 

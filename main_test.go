@@ -32,7 +32,7 @@ func TestView(t *testing.T) {
 	if !tt.HasText("电气柜元件库") {
 		t.Errorf("texts %q missing header", tt.Texts())
 	}
-	if !tt.HasText("全部原表") {
+	if !tt.HasText("全部器件") {
 		t.Errorf("texts %q missing all sources", tt.Texts())
 	}
 	if err := tt.Click("+ 新增器件"); err != nil {

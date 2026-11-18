@@ -140,6 +140,23 @@ func saveConfig(exeDir string, cfg Config) error {
 	return os.WriteFile(configPath(exeDir), data, 0o666)
 }
 
+// resolveConfiguredDir resolves a configured directory: whitespace and quotes
+// are trimmed, %VAR% and $VAR are expanded, a relative path is relative to the
+// program directory, and UNC paths and mapped drives are kept as they are.
+func resolveConfiguredDir(exeDir, configured string) string {
+	p := strings.TrimSpace(configured)
+	p = expandWindowsEnv(p)
+	p = os.ExpandEnv(p)
+	p = strings.Trim(p, `"`)
+	if p == "" {
+		return ""
+	}
+	if filepath.IsAbs(p) || strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, `//`) {
+		return filepath.Clean(p)
+	}
+	return filepath.Clean(filepath.Join(exeDir, p))
+}
+
 func resolveExcelPath(exeDir string, paths []string, filename string) string {
 	if filename == "" {
 		return ""

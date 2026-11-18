@@ -16,12 +16,12 @@ func (a *app) fileListModal(c *ui.Context, pal *Palette) {
 	files := a.fileListDisplay
 	rows := a.fileListGroupRows(files)
 
-	ui.Column(c).Width(880).MaxHeightPercent(88).Padding(16, 20).Gap(10).Radius(8).
+	ui.Column(c).Width(900).MaxHeightPercent(88).Padding(20, 24).Gap(12).Radius(10).
 		Background(pal.MainBg).Border(1, pal.BorderStrong).
-		Shadow(0, 16, 48, 0, ui.RGBA(0, 0, 0, 0.4)).Children(func() {
+		Shadow(0, 24, 64, 0, ui.RGBA(0, 0, 0, 0.35)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Gap(2).Grow(1).Children(func() {
-				ui.Text(c, "数据手册文件列表").FontSize(16).Bold().TextColor(pal.Text)
+				ui.Text(c, "数据手册文件列表").FontSize(17).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, a.fileLibraryMeta()).FontSize(11.5).TextColor(pal.TextMuted).SingleLine()
 			})
 			closeBtn := iconButton(c, "x", "关闭", pal)
@@ -29,7 +29,7 @@ func (a *app) fileListModal(c *ui.Context, pal *Palette) {
 				a.fileListOpen = false
 			}
 		})
-		ui.Divider(c).Background(pal.Border)
+		ui.Divider(c).Background(pal.BorderSubtle)
 
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if ui.SearchField(c, &a.fileListQuery).Label("搜索手册文件").
@@ -51,6 +51,7 @@ func (a *app) fileListModal(c *ui.Context, pal *Palette) {
 			if syncBtn.Clicked() {
 				a.syncFileListAsync()
 			}
+			_ = syncBtn
 			rescan := ui.Button(c, "重建索引").Height(30)
 			if a.pdfScanner.Scanning() {
 				rescan.Disabled(true)
@@ -71,13 +72,17 @@ func (a *app) fileListModal(c *ui.Context, pal *Palette) {
 				Padding(5, 9).Radius(4).Background(bg).Wrap()
 		}
 
-		ui.Row(c).Height(28).Padding(0, 12).Gap(8).AlignItems(ui.Center).
-			Background(pal.AppBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.Border).
+		ui.Row(c).Height(30).Padding(0, 12).Gap(10).AlignItems(ui.Center).
+			Background(pal.MainBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.Border).
 			Children(func() {
-				ui.Text(c, "文件名 / 目录").FontSize(11).FontWeight(600).TextColor(pal.TextFaint).Grow(1)
-				ui.Text(c, "大小").FontSize(11).FontWeight(600).TextColor(pal.TextFaint).Width(74)
-				ui.Text(c, "修改时间").FontSize(11).FontWeight(600).TextColor(pal.TextFaint).Width(126)
-				ui.Text(c, "操作").FontSize(11).FontWeight(600).TextColor(pal.TextFaint).Width(120)
+				ui.Text(c, "文件名").FontSize(10.5).FontWeight(500).
+					TextColor(pal.TextFaint).Grow(1).SingleLine()
+				ui.Text(c, "大小").FontSize(10.5).FontWeight(500).
+					TextColor(pal.TextFaint).Width(74).SingleLine()
+				ui.Text(c, "修改时间").FontSize(10.5).FontWeight(500).
+					TextColor(pal.TextFaint).Width(126).SingleLine()
+				ui.Text(c, "操作").FontSize(10.5).FontWeight(500).
+					TextColor(pal.TextFaint).Width(96).SingleLine()
 			})
 
 		if len(rows) == 0 {
@@ -133,15 +138,15 @@ func (a *app) fileListRow(row ui.ListRow, rows []fileRow, pal *Palette) {
 	c := row.Context
 	r := rows[row.Index]
 	if r.header {
-		ui.Row(c.Key("dir:"+r.dir)).Height(26).Padding(0, 12).Gap(6).AlignItems(ui.Center).
+		ui.Row(c.Key("dir:"+r.dir)).Height(30).Padding(0, 12).Gap(7).AlignItems(ui.Center).
 			Background(pal.Surface).BorderWidth(1, 0, 1, 0).BorderColor(pal.BorderSubtle).
 			Children(func() {
 				if ic := icon("folder-open"); ic != nil {
 					ui.Icon(c, ic).FontSize(12).TextColor(pal.TextFaint)
 				}
-				ui.Text(c, r.dir).FontSize(10.5).FontWeight(600).
-					TextColor(pal.TextMuted).Grow(1).SingleLine()
-				ui.Textf(c, "%d 份", r.count).FontSize(10).Font("monospace").
+				ui.Text(c, r.dir).FontSize(10.5).FontWeight(500).
+					TextColor(pal.TextFaint).Grow(1).SingleLine()
+				ui.Textf(c, "%d 份", r.count).FontSize(10).
 					TextColor(pal.TextFaint).SingleLine()
 			})
 		return
@@ -155,40 +160,28 @@ func (a *app) fileListRow(row ui.ListRow, rows []fileRow, pal *Palette) {
 	} else if row.Index%2 == 0 {
 		background = pal.RowOdd
 	}
-	ur := ui.Row(c.Key("file:"+f.FullPath)).Height(32).Padding(0, 12).Gap(8).
+	ur := ui.Row(c.Key("file:"+f.FullPath)).Height(36).Padding(0, 12).Gap(10).
 		AlignItems(ui.Center).Background(background)
+	if selected {
+		ur.BorderWidth(0, 0, 0, 2).BorderColor(pal.Accent)
+	}
 	if !selected && ur.Hovered() {
 		ur.Background(pal.RowHover)
 	}
 	ur.Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(0).Children(func() {
-			ui.Text(c, f.Name).FontSize(11.5).FontWeight(500).TextColor(pal.Text).SingleLine()
-			ui.Text(c, f.Dir).FontSize(9.5).TextColor(pal.TextFaint).SingleLine()
+		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Justify(ui.Center).Children(func() {
+			ui.Text(c, f.Name).FontSize(11.5).TextColor(pal.Text).SingleLine()
+			metaText(c, f.Dir, pal)
 		})
-		ui.Text(c, formatFileSize(f.Size)).FontSize(10.5).Font("monospace").
+		ui.Text(c, formatFileSize(f.Size)).FontSize(10.5).
 			TextColor(pal.TextMuted).Width(74).SingleLine()
-		ui.Text(c, formatModTime(f.ModTime)).FontSize(10.5).Font("monospace").
+		ui.Text(c, formatModTime(f.ModTime)).FontSize(10.5).
 			TextColor(pal.TextMuted).Width(126).SingleLine()
-		ui.Row(c).Width(120).Gap(4).AlignItems(ui.Center).Children(func() {
-			open := ui.ButtonBase(c.Key(fmt.Sprintf("fl-open:%d", row.Index))).
-				Height(22).Padding(0, 7).Radius(4).Background(pal.Accent).
-				TextColor(pal.AccentText).AlignItems(ui.Center)
-			if open.Hovered() {
-				open.Background(pal.AccentHover)
-			}
-			open.Children(func() {
-				ui.Text(c, "打开").FontSize(10.5).FontWeight(600).TextColor(pal.AccentText)
-			})
-			if open.Clicked() {
+		ui.Row(c).Width(96).Gap(10).AlignItems(ui.Center).Children(func() {
+			if open := accentLink(c, fmt.Sprintf("fl-open:%d", row.Index), "打开", pal); open.Clicked() {
 				a.onPDFRowClick(row.Index, rows, nil)
 			}
-			loc := ui.ButtonBase(c.Key(fmt.Sprintf("fl-loc:%d", row.Index))).
-				Height(22).Padding(0, 7).Radius(4).Background(pal.SurfaceHover).
-				Border(1, pal.Border).AlignItems(ui.Center)
-			loc.Children(func() {
-				ui.Text(c, "定位").FontSize(10.5).TextColor(pal.TextMuted)
-			})
-			if loc.Clicked() {
+			if loc := accentLink(c, fmt.Sprintf("fl-loc:%d", row.Index), "定位", pal); loc.Clicked() {
 				revealPDF(f.FullPath)
 			}
 		})

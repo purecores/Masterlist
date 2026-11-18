@@ -16,3 +16,5 @@ mygo_windows_*.syso
 
 # release staging and build outputs
 /dist/
+/data/pdf-index.json
+/cache/

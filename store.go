@@ -63,11 +63,17 @@ func (p *Part) Name() string {
 	return "未命名元件"
 }
 
+// SecondaryName is the name in the other language, shown under the first
+// one. It is dropped when both columns hold the same text.
 func (p *Part) SecondaryName() string {
-	if p.DescriptionCN != "" && p.DescriptionEN != "" && p.DescriptionCN != p.DescriptionEN {
-		return p.DescriptionEN
+	cn, en := strings.TrimSpace(p.DescriptionCN), strings.TrimSpace(p.DescriptionEN)
+	if cn == "" || en == "" || strings.EqualFold(cn, en) {
+		return ""
 	}
-	return ""
+	if hasCJK(cn) {
+		return en
+	}
+	return cn
 }
 
 func (p *Part) SourceLabel() string {

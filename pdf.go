@@ -227,17 +227,7 @@ func expandWindowsEnv(p string) string {
 }
 
 func (s *PDFScanner) resolveScanRoot(p string) string {
-	p = strings.TrimSpace(p)
-	p = expandWindowsEnv(p)
-	p = os.ExpandEnv(p)
-	p = strings.Trim(p, `"`)
-	if p == "" {
-		return ""
-	}
-	if filepath.IsAbs(p) || strings.HasPrefix(p, `\\`) {
-		return filepath.Clean(p)
-	}
-	return filepath.Clean(filepath.Join(s.exeDir, p))
+	return resolveConfiguredDir(s.exeDir, p)
 }
 
 // Scan walks every configured root recursively and replaces the index. Roots

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -110,12 +111,12 @@ func (a *app) sidebarHeader(c *ui.Context, pal *Palette) {
 			ui.Image(c, appIconSource).Size(30, 30).Radius(7)
 		} else {
 			ui.Box(c).Size(30, 30).Center().Radius(7).Background(pal.Accent).Children(func() {
-				ui.Text(c, "BHS").FontSize(10).Bold().TextColor(pal.AccentText)
+				ui.Text(c, "ML").FontSize(10).Bold().TextColor(pal.AccentText)
 			})
 		}
 		ui.Column(c).Gap(1).Children(func() {
 			ui.Text(c, "电气柜元件库").FontSize(14).FontWeight(600).TextColor(pal.Text).SingleLine()
-			ui.Text(c, "BHS Masterlist").FontSize(10).TextColor(pal.TextFaint).SingleLine()
+			ui.Text(c, "器件与手册").FontSize(10).TextColor(pal.TextFaint).SingleLine()
 		})
 	})
 }
@@ -172,7 +173,7 @@ func (a *app) allSourcesItem(c *ui.Context, pal *Palette) {
 func (a *app) renderSidebarItem(c *ui.Context, index int, pal *Palette) {
 	book := &a.books[index]
 	b := a.navItem(c, pal, "source:"+book.SourceFile, a.workbookSel == index,
-		"", categoryName(book.Category), book.Count)
+		"", originalTableName(book.SourceFile), book.Count)
 	if b.Clicked() {
 		a.workbookSel = index
 		a.sheetSel = -1
@@ -205,7 +206,10 @@ func (a *app) content(c *ui.Context, pal *Palette) {
 		a.scopeStrip(c, pal)
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			a.catalogBody(c, pal)
-			if a.inspectorOpen && a.selectedPart() != nil {
+			// The detail pane is permanent by default: it keeps its place
+			// with a placeholder while nothing is selected, instead of the
+			// table jumping wider when a row is chosen.
+			if a.detailVisible() {
 				a.detailPanel(c, pal)
 			}
 		})
@@ -229,9 +233,9 @@ func (a *app) pageHeader(c *ui.Context, pal *Palette) {
 		ui.Column(c).Shrink(0).Gap(1).Justify(ui.Center).Children(func() {
 			title := a.scopeTitle()
 			ui.Text(c, title).FontSize(17).FontWeight(600).
-				TextColor(pal.Text).SingleLine().Shrink(0)
+				TextColor(pal.Text).SingleLine().Shrink(0).Selectable()
 			ui.Text(c, a.scopeBreadcrumb()).FontSize(10.5).
-				TextColor(pal.TextFaint).SingleLine()
+				TextColor(pal.TextFaint).SingleLine().Selectable()
 		})
 
 		ui.Spacer(c)
@@ -249,22 +253,19 @@ func (a *app) pageHeader(c *ui.Context, pal *Palette) {
 
 		ui.Box(c).Width(1).Height(20).Background(pal.BorderSubtle).Shrink(0)
 
-		themeIcon := "sun"
-		themeTip := "浅色模式"
-		if a.lightTheme {
-			themeIcon = "moon"
-			themeTip = "深色模式"
-		}
+		themeIcon, themeTip := a.themeButton()
 		if themeBtn := iconButton(c, themeIcon, themeTip, pal); themeBtn.Clicked() {
 			a.toggleTheme(c)
 		}
 
 		infoBtn := iconButton(c, "columns-3", "详情栏", pal)
-		if a.inspectorOpen && a.selectedPart() != nil {
+		if a.detailVisible() {
 			infoBtn.Background(pal.AccentCyanBg)
 		}
 		if infoBtn.Clicked() {
 			a.inspectorOpen = !a.inspectorOpen
+			a.cfg.DetailPinned = a.inspectorOpen
+			_ = saveConfig(a.exeDir, a.cfg)
 		}
 
 		if setBtn := iconButton(c, "settings", "目录与设置", pal); setBtn.Clicked() {
@@ -277,6 +278,19 @@ func (a *app) pageHeader(c *ui.Context, pal *Palette) {
 	})
 }
 
+// originalTableName is the label the sidebar uses for a source workbook: the
+// original file's own name, without the shared prefix and extension, so
+// "Master E-list_Cable&Wire.xlsx" reads "Cable&Wire".
+func originalTableName(file string) string {
+	base := filepath.Base(file)
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	const prefix = "master e-list_"
+	if len(stem) >= len(prefix) && strings.EqualFold(stem[:len(prefix)], prefix) {
+		stem = stem[len(prefix):]
+	}
+	return stem
+}
+
 // scopeTitle names the current view in one line: the sheet when one is
 // selected, otherwise the workbook, otherwise the whole library.
 func (a *app) scopeTitle() string {
@@ -284,7 +298,7 @@ func (a *app) scopeTitle() string {
 		return sheet
 	}
 	if book := a.selectedBook(); book != nil {
-		return categoryName(book.Category)
+		return originalTableName(book.SourceFile)
 	}
 	return "全部器件"
 }
@@ -294,7 +308,7 @@ func (a *app) scopeTitle() string {
 func (a *app) scopeBreadcrumb() string {
 	count := formatInt(len(a.results)) + " 件"
 	if book := a.selectedBook(); book != nil {
-		trail := categoryName(book.Category)
+		trail := originalTableName(book.SourceFile)
 		if sheet := a.selectedSheet(); sheet != "" {
 			trail += " / " + sheet
 		}
@@ -308,9 +322,9 @@ func (a *app) searchPlaceholder() string {
 		return "在当前工作表中搜索"
 	}
 	if book := a.selectedBook(); book != nil {
-		return "在 " + categoryName(book.Category) + " 中搜索"
+		return "在 " + originalTableName(book.SourceFile) + " 中搜索"
 	}
-	return "搜索 BHS、型号、订货号..."
+	return "搜索零件号、型号、订货号..."
 }
 
 // scopeStrip answers one question: what am I looking at? A sheet selector
@@ -700,7 +714,7 @@ type tableColumn struct {
 }
 
 var resultColumns = []tableColumn{
-	{"BHS 编号", SortBHS, 98},
+	{"零件号", SortBHS, 98},
 	{"元件名称", SortName, 0},
 	{"型号 / 规格", SortSpec, 122},
 	{"品牌 / 供应商", SortManufacturer, 82},
@@ -843,8 +857,14 @@ func (a *app) resultRow(row ui.ListRow, pal *Palette) {
 		if selected {
 			nameColor = pal.Text
 		}
-		ui.Text(c, p.Name()).FontSize(12.5).FontWeight(500).
-			TextColor(nameColor).Grow(1).MinWidth(120).SingleLine()
+		ui.Row(c).Grow(1).MinWidth(120).Gap(6).AlignItems(ui.Center).Clip().Children(func() {
+			ui.Text(c, p.Name()).FontSize(12.5).FontWeight(500).
+				TextColor(nameColor).Shrink(1).SingleLine()
+			if p.Discontinued {
+				ui.Text(c, "弃用").FontSize(9.5).FontWeight(600).
+					TextColor(pal.WarningText).Shrink(0).SingleLine()
+			}
+		})
 
 		ui.Text(c, valueOr(p.Spec, "—")).FontSize(11.5).
 			TextColor(pal.TextMuted).Width(122).SingleLine()
@@ -898,9 +918,19 @@ func (a *app) emptyResults(c *ui.Context, pal *Palette) {
 		"换个关键词试试，或从左侧选择其他原表分类。", pal)
 }
 
+// detailVisible reports whether the detail pane takes room: the pinned
+// setting keeps it there, otherwise it appears with a selection.
+func (a *app) detailVisible() bool {
+	if a.cfg.DetailPinned {
+		return true
+	}
+	return a.inspectorOpen && a.selectedPart() != nil
+}
+
 func (a *app) detailPanel(c *ui.Context, pal *Palette) {
 	p := a.selectedPart()
 	if p == nil {
+		a.detailPlaceholder(c, pal)
 		return
 	}
 	ui.Column(c).Width(336).Shrink(0).FillHeight().
@@ -909,7 +939,7 @@ func (a *app) detailPanel(c *ui.Context, pal *Palette) {
 		Children(func() {
 			a.detailHeader(c, p, pal)
 			ui.Divider(c).Background(pal.BorderSubtle)
-			ui.Scroll(c).TrackScroll(&a.detailScroll).Grow(1).
+			ui.Scroll(c).TrackScroll(&a.detailScroll).Grow(1).Selectable().
 				Padding(14, 18, 24, 18).Gap(14).Children(func() {
 				a.datasheetCard(c, p, pal)
 				a.sourceCard(c, p, pal)
@@ -928,12 +958,11 @@ func (a *app) detailPanel(c *ui.Context, pal *Palette) {
 					{"WHR 进口", p.ImportFlag},
 				}, pal)
 				a.detailSection(c, "替代与关联", [][2]string{
-					{"旧零件号 / G No.", p.AlternateNo},
 					{"CN 零件号", p.CNPartNo},
 					{"DongAn 外包号", p.DonganPartNo},
 					{"S 零件号", p.SPartNo},
-					{"相关物料", p.RelatedPart},
 				}, pal)
+				a.alternateLinks(c, p, pal)
 				a.detailSection(c, "库存与供货", [][2]string{
 					{"价格", p.Price},
 					{"备件级别", p.SpareLevel},
@@ -955,23 +984,140 @@ func (a *app) detailPanel(c *ui.Context, pal *Palette) {
 		})
 }
 
+// copyOnDouble copies a value when its selectable element is double
+// clicked. The element keeps its own styling; only the gesture is added.
+func copyOnDouble(c *ui.Context, value string, el ui.Element, toast func(string)) {
+	if el.DoubleClicked() {
+		c.Services().WriteClipboard(value)
+		toast("已复制：" + value)
+	}
+}
+
+// copyableText shows a value the user can drag to select, and copies the
+// whole value on a double click: selecting a part number or a specification
+// and pasting it is the common move in a parts library, so it takes one
+// gesture instead of two.
+func (a *app) copyableText(c *ui.Context, value string, size float32, color ui.Color, toast func(string)) {
+	t := ui.Text(c, value).FontSize(size).TextColor(color).Grow(1).Wrap().Selectable()
+	if t.DoubleClicked() {
+		c.Services().WriteClipboard(value)
+		toast("已复制：" + value)
+	}
+}
+
+// alternateLinks shows the replacement part numbers as links: in the
+// production sheets the 二手零件号 / 关联零件号 column names the current part
+// that replaces this row, so a click jumps to that part in the same table.
+func (a *app) alternateLinks(c *ui.Context, p *Part, pal *Palette) {
+	links := []struct {
+		label string
+		value string
+	}{
+		{"旧零件号 / G No.", p.AlternateNo},
+		{"二手 / 关联零件号", p.RelatedPart},
+	}
+	hasAny := false
+	for _, l := range links {
+		if strings.TrimSpace(l.value) != "" {
+			hasAny = true
+			break
+		}
+	}
+	if !hasAny {
+		return
+	}
+	ui.Column(c).Gap(6).Children(func() {
+		sectionLabel(c, "替代零件", pal)
+		ui.Column(c).Children(func() {
+			for _, l := range links {
+				value := strings.TrimSpace(l.value)
+				if value == "" {
+					continue
+				}
+				link := l
+				ui.Row(c).AlignItems(ui.Start).Gap(10).Padding(4, 0).Children(func() {
+					ui.Text(c, link.label).FontSize(10.5).TextColor(pal.TextFaint).
+						Width(96).Shrink(0)
+					// Split on separators so several numbers each act as a
+					// link, and any text stays readable.
+					ui.Row(c).Grow(1).Gap(8).Children(func() {
+						for _, token := range splitPartNumbers(value) {
+							a.partLink(c, token, pal)
+						}
+					})
+				})
+			}
+		})
+	})
+}
+
+// partLink jumps to the part a number names, or copies the number when the
+// library has no such part (a loss-machine number, say).
+func (a *app) partLink(c *ui.Context, number string, pal *Palette) {
+	number = strings.TrimSpace(number)
+	if number == "" {
+		return
+	}
+	if strings.TrimSpace(number) == "" || !looksLikePartNumber(number) {
+		ui.Text(c, number).FontSize(11.5).TextColor(pal.Text).Wrap().Selectable()
+		return
+	}
+	key := "part-link:" + number
+	if b := accentLink(c, key, number, pal); b.Clicked() {
+		if a.jumpToPart(number) {
+			return
+		}
+		c.Services().WriteClipboard(number)
+		c.Toast("库中没有 " + number + "，已复制该零件号")
+	}
+}
+
+// detailPlaceholder fills the detail pane while nothing is chosen, so the
+// pane keeps its width and the table does not jump on every selection.
+func (a *app) detailPlaceholder(c *ui.Context, pal *Palette) {
+	ui.Column(c).Width(336).Shrink(0).FillHeight().
+		Background(pal.SidebarBg).
+		BorderWidth(0, 0, 0, 1).BorderColor(pal.Border).
+		Children(func() {
+			ui.Row(c).Padding(14, 18).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "器件详情").FontSize(12).FontWeight(600).TextColor(pal.TextMuted)
+				ui.Spacer(c)
+				if closeBtn := iconButton(c, "x", "隐藏详情栏", pal); closeBtn.Clicked() {
+					a.inspectorOpen = false
+					a.cfg.DetailPinned = false
+					_ = saveConfig(a.exeDir, a.cfg)
+				}
+			})
+			ui.Column(c).Grow(1).Center().Gap(8).Padding(24).Children(func() {
+				if ic := icon("info"); ic != nil {
+					ui.Icon(c, ic).FontSize(22).TextColor(pal.TextFaint)
+				}
+				ui.Text(c, "选择一个器件").FontSize(12.5).FontWeight(500).TextColor(pal.TextMuted)
+				ui.Text(c, "点击列表中的任意一行，规格、来源与手册会显示在这里。").
+					FontSize(11).TextColor(pal.TextFaint).TextAlign(ui.Center).Wrap()
+			})
+		})
+}
+
 func (a *app) detailHeader(c *ui.Context, p *Part, pal *Palette) {
 	ui.Column(c).Gap(8).Padding(14, 18, 14, 18).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			statusIndicator(c, p.Status, a.lightTheme)
 			ui.Spacer(c)
-			if copyBtn := iconButton(c, "copy", "复制 BHS 编号", pal); copyBtn.Clicked() && p.BHSNo != "" {
-				mygo.Clipboard.WriteText(p.BHSNo)
+			if copyBtn := iconButton(c, "copy", "复制零件号", pal); copyBtn.Clicked() && p.BHSNo != "" {
+				c.Services().WriteClipboard(p.BHSNo)
 				c.Toast("已复制 " + p.BHSNo)
 			}
 			if closeBtn := iconButton(c, "x", "收起详情", pal); closeBtn.Clicked() {
 				a.inspectorOpen = false
 			}
 		})
-		ui.Column(c).Gap(2).Children(func() {
-			ui.Text(c, valueOr(p.BHSNo, "未编号")).FontSize(19).FontWeight(600).
-				Font("monospace").LetterSpacing(-0.3).TextColor(pal.Text).SingleLine()
-			ui.Text(c, p.Name()).FontSize(13).FontWeight(500).TextColor(pal.Text).Wrap()
+		ui.Column(c).Gap(2).Selectable().Children(func() {
+			bhsText := ui.Text(c, valueOr(p.BHSNo, "未编号")).FontSize(19).FontWeight(600).
+				Font("monospace").LetterSpacing(-0.3).TextColor(pal.Text).SingleLine().Selectable()
+			copyOnDouble(c, p.BHSNo, bhsText, c.Toast)
+			nameText := ui.Text(c, p.Name()).FontSize(13).FontWeight(500).TextColor(pal.Text).Wrap().Selectable()
+			copyOnDouble(c, p.Name(), nameText, c.Toast)
 			if p.SecondaryName() != "" {
 				ui.Text(c, p.SecondaryName()).FontSize(11).TextColor(pal.TextFaint).Wrap()
 			}
@@ -1020,8 +1166,9 @@ func (a *app) sourceCard(c *ui.Context, p *Part, pal *Palette) {
 	book := a.bookByFile(p.SourceFile)
 	ui.Column(c).Gap(6).Children(func() {
 		sectionLabel(c, "来源", pal)
-		ui.Column(c).Gap(3).Children(func() {
-			ui.Text(c, p.SourceFile).FontSize(11.5).FontWeight(500).TextColor(pal.Text).Wrap()
+		ui.Column(c).Gap(3).Selectable().Children(func() {
+			fileText := ui.Text(c, p.SourceFile).FontSize(11.5).FontWeight(500).TextColor(pal.Text).Wrap().Selectable()
+			copyOnDouble(c, p.SourceFile, fileText, c.Toast)
 			sheetLabel := p.SourceSheet
 			if sheetLabel == "" {
 				sheetLabel = p.Subcategory
@@ -1032,10 +1179,10 @@ func (a *app) sourceCard(c *ui.Context, p *Part, pal *Palette) {
 			metaText(c, sheetLabel, pal)
 		})
 		ui.Row(c).Gap(10).Margin(2, 0, 0, 0).Children(func() {
-			if openExcel := accentLink(c, "btn:open-excel-part", "打开原表", pal); openExcel.Clicked() {
+			if openExcel := accentLink(c, "btn:open-excel-part", "打开本地副本", pal); openExcel.Clicked() {
 				a.openExcelFile(c, p.SourceFile)
 			}
-			if locate := accentLink(c, "btn:locate-excel-file", "定位文件", pal); locate.Clicked() {
+			if locate := accentLink(c, "btn:locate-excel-file", "定位副本", pal); locate.Clicked() {
 				a.locateExcelFile(c, p.SourceFile)
 			}
 			if book != nil && len(book.Sheets) > 1 {
@@ -1084,8 +1231,7 @@ func (a *app) detailSection(c *ui.Context, title string, fields [][2]string, pal
 				ui.Row(c).AlignItems(ui.Start).Gap(10).Padding(4, 0).Children(func() {
 					ui.Text(c, field[0]).FontSize(10.5).TextColor(pal.TextFaint).
 						Width(96).Shrink(0)
-					ui.Text(c, field[1]).FontSize(11.5).TextColor(pal.Text).
-						Grow(1).Wrap()
+					a.copyableText(c, field[1], 11.5, pal.Text, c.Toast)
 				})
 			}
 		})
@@ -1110,7 +1256,7 @@ func (a *app) statusBar(c *ui.Context, pal *Palette) {
 		}
 		ui.Spacer(c)
 		ui.Text(c, "Ctrl+F 搜索 · 双击行修改").
-			FontSize(10).TextColor(pal.TextFaint).SingleLine()
+			FontSize(10).TextColor(pal.TextFaint).SingleLine().Selectable()
 	})
 }
 
@@ -1125,7 +1271,7 @@ func (a *app) form(c *ui.Context, pal *Palette) {
 					title = "修改器件"
 				}
 				ui.Text(c, title).FontSize(17).FontWeight(600).TextColor(pal.Text)
-				ui.Text(c, "填写参数并保存到本地器件库。").FontSize(11.5).TextColor(pal.TextMuted)
+				ui.Text(c, "填写参数并保存到本地器件库。").FontSize(11.5).TextColor(pal.TextMuted).Selectable()
 			})
 			closeBtn := iconButton(c, "x", "关闭", pal)
 			if closeBtn.Clicked() {
@@ -1135,7 +1281,7 @@ func (a *app) form(c *ui.Context, pal *Palette) {
 		})
 		ui.Divider(c).Background(pal.BorderSubtle)
 		ui.Grid(c).Columns(2).GapX(14).GapY(7).Children(func() {
-			a.formField(c, "BHS 编号 *", func() {
+			a.formField(c, "零件号 *", func() {
 				ui.TextInput(c, &a.draft.BHSNo).AutoFocus()
 			})
 			a.formField(c, "类别 *", func() {
@@ -1176,7 +1322,7 @@ func (a *app) form(c *ui.Context, pal *Palette) {
 			}).ColumnSpan(2)
 		})
 		if dupes := a.duplicateDraftCount(); dupes > 0 {
-			ui.Textf(c, "另有 %d 条相同 BHS 编号的记录；保存后它们都会保留。", dupes).
+			ui.Textf(c, "另有 %d 条相同零件号的记录；保存后它们都会保留。", dupes).
 				FontSize(10.5).TextColor(pal.WarningText)
 		}
 		if a.formError != "" {
@@ -1271,7 +1417,7 @@ func (a *app) datasheetCard(c *ui.Context, p *Part, pal *Palette) {
 			ui.Column(c).Gap(6).Padding(10, 12).Radius(7).Background(pal.Surface).
 				Border(1, pal.BorderSubtle).Children(func() {
 				ui.Text(c, "没有匹配到 PDF 手册").FontSize(11.5).TextColor(pal.TextMuted)
-				metaText(c, "匹配文件名中的 BHS 编号：'"+valueOr(p.BHSNo, "-")+"'", pal)
+				metaText(c, "匹配文件名中的零件号：'"+valueOr(p.BHSNo, "-")+"'", pal)
 				ui.Row(c).Gap(10).Margin(2, 0, 0, 0).Children(func() {
 					if cfg := accentLink(c, "btn:cfg-pdf-inline", "配置手册目录", pal); cfg.Clicked() {
 						a.openDatasheetSettings()
@@ -1304,9 +1450,10 @@ func (a *app) datasheetRow(c *ui.Context, p *Part, i int, pdf PDFFile, pal *Pale
 		if i > 0 {
 			ui.Divider(c).Background(pal.BorderSubtle)
 		}
-		ui.Column(c).Padding(7, 0).Gap(4).Children(func() {
-			ui.Text(c, pdf.Name).FontSize(11).FontWeight(500).
-				TextColor(pal.Text).Wrap()
+		ui.Column(c).Padding(7, 0).Gap(4).Selectable().Children(func() {
+			nameText := ui.Text(c, pdf.Name).FontSize(11).FontWeight(500).
+				TextColor(pal.Text).Wrap().Selectable()
+			copyOnDouble(c, pdf.Name, nameText, c.Toast)
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 				metaText(c, formatFileSize(pdf.Size)+" · "+formatModTime(pdf.ModTime), pal)
 				ui.Spacer(c)
@@ -1322,14 +1469,14 @@ func (a *app) datasheetRow(c *ui.Context, p *Part, i int, pdf PDFFile, pal *Pale
 }
 
 func (a *app) settingsModal(c *ui.Context, pal *Palette) {
-	ui.Column(c).Width(680).Padding(20, 24).Gap(14).Radius(10).
+	ui.Column(c).Width(700).HeightPercent(86).Padding(20, 24).Gap(14).Radius(10).
 		Background(pal.MainBg).Border(1, pal.BorderStrong).
 		Shadow(0, 24, 64, 0, ui.RGBA(0, 0, 0, 0.35)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Gap(2).Grow(1).Children(func() {
 				ui.Text(c, "设置").FontSize(17).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "手册与原始表格的存放位置、状态栏和 PDF 打开方式。").
-					FontSize(11.5).TextColor(pal.TextMuted)
+					FontSize(11.5).TextColor(pal.TextMuted).Selectable()
 			})
 			closeBtn := iconButton(c, "x", "关闭", pal)
 			if closeBtn.Clicked() {
@@ -1340,14 +1487,21 @@ func (a *app) settingsModal(c *ui.Context, pal *Palette) {
 
 		ui.Tabs(c, &a.settingsTab, "数据手册目录", "原表目录", "常规")
 
-		switch a.settingsTab {
-		case 0:
-			a.settingsDatasheetTab(c, pal)
-		case 1:
-			a.settingsExcelTab(c, pal)
-		default:
-			a.settingsGeneralTab(c, pal)
-		}
+		// The tab body scrolls: the general tab holds several groups and
+		// would otherwise run past the window.
+		ui.Scroll(c).Grow(1).Selectable().
+			Padding(0, 2, 2, 2).Children(func() {
+			ui.Column(c).Gap(12).Children(func() {
+				switch a.settingsTab {
+				case 0:
+					a.settingsDatasheetTab(c, pal)
+				case 1:
+					a.settingsExcelTab(c, pal)
+				default:
+					a.settingsGeneralTab(c, pal)
+				}
+			})
+		})
 
 		if a.datasheetStatusMsg != "" {
 			ui.Text(c, a.datasheetStatusMsg).FontSize(11).TextColor(pal.DangerText).
@@ -1474,11 +1628,53 @@ func (a *app) settingsExcelTab(c *ui.Context, pal *Palette) {
 }
 
 func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
-	sectionLabel(c, "状态栏与只读选项", pal)
+	sectionLabel(c, "外观与界面", pal)
+	ui.Column(c).Background(pal.Surface).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
+			ui.Column(c).Grow(1).Gap(2).Children(func() {
+				ui.Text(c, "外观").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "跟随系统时随 Windows 的浅色/深色设置变化，也可以固定为浅色或深色。").
+					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+			})
+			appearance := 0
+			switch a.cfg.Theme {
+			case "light":
+				appearance = 1
+			case "dark":
+				appearance = 2
+			}
+			if seg := ui.Segmented(c, &appearance, "跟随系统", "浅色", "深色").
+				Label("外观"); seg.Changed() {
+				switch appearance {
+				case 1:
+					a.cfg.Theme = "light"
+				case 2:
+					a.cfg.Theme = "dark"
+				default:
+					a.cfg.Theme = "auto"
+				}
+				a.applyTheme()
+				_ = saveConfig(a.exeDir, a.cfg)
+			}
+		})
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
+			ui.Column(c).Grow(1).Gap(2).Children(func() {
+				ui.Text(c, "详情栏常驻").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "没有选中器件时也保留右侧详情栏，列表宽度保持不变。").
+					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+			})
+			on := a.cfg.DetailPinned
+			if ui.Switch(c, &on).Label("详情栏常驻").Changed() {
+				a.cfg.DetailPinned = on
+				a.inspectorOpen = on
+				_ = saveConfig(a.exeDir, a.cfg)
+			}
+		})
+	})
 
-	ui.Column(c).Border(1, pal.Border).Radius(6).Background(pal.Surface).
-		Dividers(1, pal.BorderSubtle).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 12).Children(func() {
+	ui.Row(c).Margin(8, 0, 0, 0).Children(func() { sectionLabel(c, "状态栏", pal) })
+	ui.Column(c).Background(pal.Surface).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
 				ui.Text(c, "常驻状态栏").FontSize(12).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "在 Windows 通知区域显示程序图标，并可从那里唤起窗口。").
@@ -1497,7 +1693,7 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 				a.applyTraySetting()
 			}
 		})
-		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 12).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
 				ui.Text(c, "关闭窗口时隐藏到状态栏").FontSize(12).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "关闭窗口不退出程序，改从状态栏图标恢复；退出请用图标菜单的“退出”。").
@@ -1513,7 +1709,68 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 				_ = saveConfig(a.exeDir, a.cfg)
 			}
 		})
-		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 12).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 2, 9, 2).Children(func() {
+			ui.Text(c, a.trayStatusLine()).FontSize(10.5).TextColor(pal.TextFaint).SingleLine()
+			ui.Spacer(c)
+			if a.trayReady {
+				ui.Text(c, "图标已创建").FontSize(10).TextColor(pal.SuccessText)
+			}
+		})
+	})
+
+	ui.Row(c).Margin(8, 0, 0, 0).Children(func() { sectionLabel(c, "原始表格", pal) })
+	ui.Column(c).Background(pal.Surface).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
+			ui.Column(c).Grow(1).Gap(2).Children(func() {
+				ui.Text(c, "使用密码打开原表").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "原表设置了编辑密码时，用已保存的密码通过 Excel 打开本地副本，不再弹密码框。").
+					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+			})
+			on := a.cfg.OpenExcelPassword
+			if ui.Switch(c, &on).Label("使用密码打开原表").Changed() {
+				a.cfg.OpenExcelPassword = on
+				_ = saveConfig(a.exeDir, a.cfg)
+			}
+		})
+		ui.Row(c).Gap(8).Padding(0, 2, 9, 2).Children(func() {
+			ui.TextInput(c, &a.cfg.ExcelPassword).Password().
+				Label("原表编辑密码").Grow(1).Placeholder("原表的编辑密码")
+			if ui.Button(c, "保存").Height(28).Clicked() {
+				_ = saveConfig(a.exeDir, a.cfg)
+				c.Toast("已保存原表密码")
+			}
+		})
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
+			ui.Column(c).Grow(1).Gap(2).Children(func() {
+				ui.Text(c, "自动同步原表").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Textf(c, "每 %d 分钟把原表的最新版本下载到本地副本并导入；0 表示只在手动同步时进行。原表本身不会被修改。",
+					a.cfg.AutoSyncMinutes).
+					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+			})
+			minutes := float64(a.cfg.AutoSyncMinutes)
+			ui.Row(c).Width(140).Shrink(0).Children(func() {
+				in := ui.NumberInput(c, &minutes, 0, 1440, 15).
+					Label("自动同步间隔（分钟）").Grow(1)
+				if in.Changed() {
+					a.cfg.AutoSyncMinutes = int(minutes)
+					_ = saveConfig(a.exeDir, a.cfg)
+					a.restartAutoSync()
+				}
+			})
+		})
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 2, 9, 2).Children(func() {
+			ui.Textf(c, "本地副本目录：%s", localWorkbookDir(a.exeDir)).
+				FontSize(10).TextColor(pal.TextFaint).SingleLine().Selectable()
+			ui.Spacer(c)
+			if ui.Button(c, "打开副本目录").Height(26).Clicked() {
+				_ = shellOpenPath(localWorkbookDir(a.exeDir))
+			}
+		})
+	})
+
+	ui.Row(c).Margin(8, 0, 0, 0).Children(func() { sectionLabel(c, "数据手册", pal) })
+	ui.Column(c).Background(pal.Surface).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
 				ui.Text(c, "以只读方式打开 PDF").FontSize(12).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "打开数据手册时使用只读副本，避免在手册上误编辑或保存，也不会占用网络盘上的原文件。").
@@ -1525,54 +1782,37 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 				_ = saveConfig(a.exeDir, a.cfg)
 			}
 		})
-		ui.Row(c).AlignItems(ui.Center).Gap(4).Padding(9, 12, 4, 12).Children(func() {
-			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "只读副本使用的 PDF 阅读器（可选）").FontSize(12).FontWeight(600).TextColor(pal.Text)
-				ui.Text(c, "留空时自动查找 SumatraPDF，再退回系统关联程序；也可指定其他阅读器的完整路径。").
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
-			})
-		})
-		ui.Row(c).Gap(8).Padding(0, 12, 9, 12).Children(func() {
+		ui.Row(c).Gap(8).Padding(0, 2, 9, 2).Children(func() {
 			ui.TextInput(c, &a.cfg.PDFReaderPath).Label("PDF 阅读器路径").Grow(1).
 				Placeholder(`C:\Program Files\SumatraPDF\SumatraPDF.exe`)
 			if ui.Button(c, "浏览...").Height(28).Clicked() {
 				a.browseReader()
 			}
 		})
-		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 12).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "索引在多少分钟后过期").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "索引过期时间").FontSize(12).FontWeight(600).TextColor(pal.Text)
 				ui.Textf(c, "当前 %d 分钟；索引保存在 data\\pdf-index.json，下次启动秒开。",
 					a.cfg.PDFIndexMaxAgeMinutes).
 					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
 			})
 			minutes := float64(a.cfg.PDFIndexMaxAgeMinutes)
-			in := ui.NumberInput(c, &minutes, 0, 1440, 5).
-				Label("索引过期时间（分钟）").Width(90)
-			if in.Changed() {
-				a.cfg.PDFIndexMaxAgeMinutes = int(minutes)
-				_ = saveConfig(a.exeDir, a.cfg)
-			}
-		})
-		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(6, 12).Children(func() {
-			ui.Text(c, a.trayStatusLine()).FontSize(10.5).TextColor(pal.TextFaint).SingleLine()
-			ui.Spacer(c)
-			if a.trayReady {
-				ui.Text(c, "图标已创建").FontSize(10).TextColor(pal.SuccessText)
-			}
-		})
-	})
-
-	ui.Row(c).Margin(6, 0, 0, 0).Children(func() { sectionLabel(c, "数据手册索引", pal) })
-	ui.Column(c).Border(1, pal.Border).Radius(6).Background(pal.Surface).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 12).Children(func() {
-			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, a.fileLibraryMeta()).FontSize(11).TextColor(pal.TextMuted).Wrap()
+			ui.Row(c).Width(140).Shrink(0).Children(func() {
+				in := ui.NumberInput(c, &minutes, 0, 1440, 5).
+					Label("索引过期时间（分钟）").Grow(1)
+				if in.Changed() {
+					a.cfg.PDFIndexMaxAgeMinutes = int(minutes)
+					_ = saveConfig(a.exeDir, a.cfg)
+				}
 			})
-			if ui.Button(c, "重建索引").Height(28).Clicked() {
+		})
+		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 2, 9, 2).Children(func() {
+			ui.Text(c, a.fileLibraryMeta()).FontSize(10.5).TextColor(pal.TextMuted).SingleLine()
+			ui.Spacer(c)
+			if ui.Button(c, "重建索引").Height(26).Clicked() {
 				a.scanDatasheetsAsync(true)
 			}
-			if ui.Button(c, "手册库文件列表").Height(28).Clicked() {
+			if ui.Button(c, "手册文件列表").Height(26).Clicked() {
 				a.openFileList()
 			}
 		})
@@ -1611,7 +1851,7 @@ func (a *app) syncModal(c *ui.Context, pal *Palette) {
 				}
 				ui.Text(c, title).FontSize(17).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "只读取原表，增量更新器件库；手工维护的记录不会被覆盖。").
-					FontSize(11.5).TextColor(pal.TextMuted)
+					FontSize(11.5).TextColor(pal.TextMuted).Selectable()
 			})
 			closeBtn := iconButton(c, "x", "关闭", pal)
 			if closeBtn.Clicked() {
@@ -1624,7 +1864,7 @@ func (a *app) syncModal(c *ui.Context, pal *Palette) {
 			ui.Column(c).Center().Gap(10).Padding(30).Children(func() {
 				ui.Spinner(c)
 				ui.Text(c, "正在读取原表并比对器件库").FontSize(13.5).FontWeight(600).TextColor(pal.Text)
-				ui.Text(c, "识别每个工作表的表头与 BHS 编号").FontSize(11).TextColor(pal.TextMuted)
+				ui.Text(c, "识别每个工作表的表头与零件号").FontSize(11).TextColor(pal.TextMuted)
 			})
 		} else if a.syncErr != "" {
 			ui.Column(c).Padding(12).Gap(6).Radius(6).Background(pal.Danger.Alpha(0.10)).

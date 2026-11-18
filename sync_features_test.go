@@ -43,7 +43,7 @@ func writeXLSX(t *testing.T, path string, sheets map[string][][]any) {
 // start from the shipped schema without touching the repository's file.
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("data", "masterlist.example.db"))
+	data, err := os.ReadFile(filepath.Join("data", "masterlist.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,4 +338,53 @@ func moduleDir(t *testing.T, module string) string {
 		t.Skip("module not in the build list:", err)
 	}
 	return filepath.Clean(strings.TrimSpace(string(out)))
+}
+
+// A red part-number cell marks the part as discontinued, and that flag
+// survives the round trip through the database.
+func TestSyncRedPartNumberIsObsolete(t *testing.T) {
+	store := openTestStore(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Master E-list_Accessories.xlsx")
+	f := excelize.NewFile()
+	sheet := "cable duct"
+	_ = f.SetSheetName("Sheet1", sheet)
+	rows := [][]any{
+		{"零件号", "零件名称", "型号", "品牌"},
+		{"171636", "线槽", "B23/H20", "Kss"},
+	}
+	for i, row := range rows {
+		cell, _ := excelize.CoordinatesToCellName(1, i+1)
+		if err := f.SetSheetRow(sheet, cell, &row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	red, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Color: "FFFF0000"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetCellStyle(sheet, "A2", "A2", red); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+
+	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, false); err != nil {
+		t.Fatal(err)
+	}
+	parts, _, _, err := store.LoadAll(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("parts=%d", len(parts))
+	}
+	if parts[0].Status != "obsolete" {
+		t.Errorf("status=%q, want obsolete", parts[0].Status)
+	}
+	if !parts[0].Discontinued {
+		t.Errorf("discontinued flag not loaded")
+	}
 }

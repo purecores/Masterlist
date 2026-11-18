@@ -22,17 +22,26 @@ const (
 type Config struct {
 	DatasheetPaths        []string `json:"datasheet_paths"`
 	MasterlistPaths       []string `json:"masterlist_paths"`
-	Theme                 string   `json:"theme"`           // "dark" or "light"
-	TrayEnabled           bool     `json:"tray_enabled"`    // show an icon in the notification area
-	CloseToTray           bool     `json:"close_to_tray"`   // closing the window hides it to the tray
-	ReadOnlyPDF           bool     `json:"read_only_pdf"`   // open datasheets in a read-only viewer
-	PDFReaderPath         string   `json:"pdf_reader_path"` // optional viewer used for read-only opens
+	Theme                 string   `json:"theme"` // "auto", "dark" or "light"
+	TrayEnabled           bool     `json:"tray_enabled"`
+	CloseToTray           bool     `json:"close_to_tray"`
+	ReadOnlyPDF           bool     `json:"read_only_pdf"`
+	PDFReaderPath         string   `json:"pdf_reader_path"`
 	SortMode              SortMode `json:"sort_mode"`
 	SortDesc              bool     `json:"sort_desc"`
 	CategoryFilter        string   `json:"category_filter"`
 	ManufacturerFilter    string   `json:"manufacturer_filter"`
 	DatasheetOnly         bool     `json:"datasheet_only"`
 	PDFIndexMaxAgeMinutes int      `json:"pdf_index_max_age_minutes"`
+	// DetailPinned keeps the detail pane visible even without a selection.
+	DetailPinned bool `json:"detail_pinned"`
+	// OpenExcelPassword asks Excel for the original workbook's edit password
+	// when it opens the local copy.
+	OpenExcelPassword bool   `json:"open_excel_password"`
+	ExcelPassword     string `json:"excel_password"`
+	// AutoSyncMinutes refreshes the local copy of the original workbooks and
+	// re-imports changes on this interval; 0 turns it off.
+	AutoSyncMinutes int `json:"auto_sync_minutes"`
 }
 
 func defaultConfig() Config {
@@ -45,7 +54,7 @@ func defaultConfig() Config {
 			`..\Masterlist`,
 			`Masterlist`,
 		},
-		Theme:                 "dark",
+		Theme:                 "auto",
 		TrayEnabled:           true,
 		CloseToTray:           true,
 		ReadOnlyPDF:           false,
@@ -56,6 +65,10 @@ func defaultConfig() Config {
 		ManufacturerFilter:    "",
 		DatasheetOnly:         false,
 		PDFIndexMaxAgeMinutes: 0,
+		DetailPinned:          true,
+		OpenExcelPassword:     false,
+		ExcelPassword:         "",
+		AutoSyncMinutes:       60,
 	}
 }
 
@@ -77,7 +90,7 @@ func loadConfig(exeDir string) Config {
 		if len(loaded.MasterlistPaths) > 0 {
 			cfg.MasterlistPaths = cleanPathList(loaded.MasterlistPaths)
 		}
-		if loaded.Theme == "light" || loaded.Theme == "dark" {
+		if loaded.Theme == "light" || loaded.Theme == "dark" || loaded.Theme == "auto" {
 			cfg.Theme = loaded.Theme
 		}
 		if validSortMode(loaded.SortMode) {
@@ -104,8 +117,21 @@ func loadConfig(exeDir string) Config {
 			if v, ok := raw["datasheet_only"]; ok {
 				_ = json.Unmarshal(v, &cfg.DatasheetOnly)
 			}
+			if v, ok := raw["detail_pinned"]; ok {
+				_ = json.Unmarshal(v, &cfg.DetailPinned)
+			}
+			if v, ok := raw["open_excel_password"]; ok {
+				_ = json.Unmarshal(v, &cfg.OpenExcelPassword)
+			}
 		}
 		cfg.PDFReaderPath = strings.TrimSpace(loaded.PDFReaderPath)
+		cfg.ExcelPassword = strings.TrimSpace(loaded.ExcelPassword)
+		if loaded.AutoSyncMinutes > 0 {
+			cfg.AutoSyncMinutes = loaded.AutoSyncMinutes
+		}
+		if cfg.AutoSyncMinutes < 0 {
+			cfg.AutoSyncMinutes = 0
+		}
 		if cfg.PDFIndexMaxAgeMinutes < 0 {
 			cfg.PDFIndexMaxAgeMinutes = 0
 		}
@@ -281,13 +307,13 @@ func cleanPDFReaderArgument(p string) string {
 }
 
 func sortModeOptions() []string {
-	return []string{"原表顺序", "BHS 编号", "元件名称", "品牌/供应商", "型号 / 规格", "最近修改"}
+	return []string{"原表顺序", "零件号", "元件名称", "品牌/供应商", "型号 / 规格", "最近修改"}
 }
 
 func sortModeLabel(m SortMode) string {
 	switch m {
 	case SortBHS:
-		return "BHS 编号"
+		return "零件号"
 	case SortName:
 		return "元件名称"
 	case SortManufacturer:
@@ -303,7 +329,7 @@ func sortModeLabel(m SortMode) string {
 
 func sortModeFromLabel(label string) SortMode {
 	switch label {
-	case "BHS 编号":
+	case "零件号":
 		return SortBHS
 	case "元件名称":
 		return SortName

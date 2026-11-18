@@ -46,7 +46,7 @@ func (a *app) setupTray() {
 }
 
 func (a *app) trayToolTip() string {
-	base := "BHS 电气柜单元器件库"
+	base := "电气柜器件库"
 	return base + " · " + formatInt(a.summary.Total) + " 件"
 }
 

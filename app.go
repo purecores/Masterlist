@@ -82,6 +82,7 @@ type app struct {
 	fileListSyncing      bool
 
 	lightTheme    bool
+	systemDark    bool
 	syncModalOpen bool
 	syncRunning   bool
 	syncDryRun    bool
@@ -89,6 +90,7 @@ type app struct {
 	syncErr       string
 	scanDoneAt    string
 	pendingToast  string
+	autoSync      autoSyncState
 	// settleScanOnLaunch remembers the last index sync, so the first launch
 	// of a day refreshes it and later launches open from the cache.
 	settleScanOnLaunch bool
@@ -196,11 +198,11 @@ func newApp(dbPath, initialQuery string, openSettings bool) *app {
 		sortDesc:            cfg.SortDesc,
 		query:               initialQuery,
 		resultSel:           -1,
-		inspectorOpen:       true,
+		inspectorOpen:       cfg.DetailPinned,
 		datasheetModalOpen:  openSettings,
 		datasheetPathsText:  strings.Join(cfg.DatasheetPaths, "\n"),
 		masterlistPathsText: strings.Join(cfg.MasterlistPaths, "\n"),
-		lightTheme:          cfg.Theme == "light",
+		lightTheme:          false,
 		filterCategory:      cfg.CategoryFilter,
 		filterMfr:           cfg.ManufacturerFilter,
 		filterTypes:         boolToIndex(cfg.DatasheetOnly),
@@ -245,6 +247,11 @@ func (a *app) loadData(win *mygo.Window) {
 			a.refreshResults(0)
 		}
 		a.refreshTray()
+		// First launch, or a folder of copies that was cleared: fetch the
+		// original tables once, so the library has a local set to work from.
+		if a.cfg.AutoSyncMinutes > 0 && (len(parts) == 0 || !hasLocalWorkbooks(a.exeDir)) {
+			a.runAutoSync()
+		}
 	})
 
 	// A cached datasheet index opens instantly. It is refreshed on launch
@@ -319,6 +326,45 @@ func matchesStatus(status string, sel int) bool {
 // filterActive reports whether any list filter beyond the sidebar is on.
 func (a *app) filterActive() bool {
 	return a.filterStatus > 0 || a.filterCategory != "" || a.filterMfr != "" || a.filterTypes > 0
+}
+
+// jumpToPart selects the part a number names, if it is in the library.
+// It keeps the current folder, filters by the number, picks the first
+// match, and scrolls it into view.
+func (a *app) jumpToPart(number string) bool {
+	number = strings.TrimSpace(number)
+	if number == "" {
+		return false
+	}
+	for _, sel := range []struct {
+		match func(*Part) bool
+	}{{func(p *Part) bool { return strings.EqualFold(p.BHSNo, number) }},
+		{func(p *Part) bool { return strings.EqualFold(p.RelatedPart, number) }},
+		{func(p *Part) bool { return strings.EqualFold(p.AlternateNo, number) }}} {
+		for i, p := range a.results {
+			if sel.match(p) {
+				a.resultSel = i
+				a.inspectorOpen = true
+				a.detailScroll.Y = 0
+				a.resultList.ScrollIntoView(i)
+				return true
+			}
+		}
+	}
+	// Not in this view: search for the number so the part shows up even
+	// under another workbook.
+	for _, p := range a.parts {
+		if strings.EqualFold(p.BHSNo, number) {
+			a.query = number
+			a.workbookSel = -1
+			a.sheetSel = -1
+			a.refreshResults(p.ID)
+			a.inspectorOpen = true
+			a.detailScroll.Y = 0
+			return true
+		}
+	}
+	return false
 }
 
 func (a *app) refreshResults(keepID int64) {
@@ -429,6 +475,52 @@ func (a *app) refreshResults(keepID int64) {
 
 // compareParts orders two parts by a sort mode, always ascending; the caller
 // reverses it for a descending list.
+// splitPartNumbers breaks a replacement cell into numbers. The sheets use
+// spaces, commas, slashes and line breaks between several replacements.
+func splitPartNumbers(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		switch r {
+		case ' ', ',', ';', '/', '\n', '\r', '\t', '|':
+			return true
+		case 0x3001, 0xFF1B, 0xFF0C: // 、 ； ，
+			return true
+		}
+		return false
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		f = strings.Trim(f, "()[]{}.")
+		if f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// looksLikePartNumber reports whether a token names a part rather than a
+// note: a number, letter or dash group of at least six characters.
+func looksLikePartNumber(token string) bool {
+	digits := 0
+	for _, r := range token {
+		if r >= '0' && r <= '9' {
+			digits++
+		}
+	}
+	word := false
+	for _, r := range token {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '-', r == '.':
+			word = true
+		default:
+			word = false
+		}
+		if !word {
+			break
+		}
+	}
+	return len(token) >= 6 && digits >= 4
+}
+
 func compareParts(mode SortMode, x, y *Part) int {
 	switch mode {
 	case SortBHS:
@@ -585,7 +677,7 @@ func (a *app) saveDraft(c *ui.Context) {
 	a.draft.Remark = strings.TrimSpace(a.draft.Remark)
 
 	if a.draft.BHSNo == "" {
-		a.formError = "BHS 编号不能为空。"
+		a.formError = "零件号不能为空。"
 		return
 	}
 	if a.draft.Category == "" {
@@ -683,16 +775,64 @@ func logif(format string, args ...any) {
 	log.Printf(format, args...)
 }
 
+// toggleTheme walks the appearance through auto → light → dark → auto, so
+// the switch never lands in a state the setting cannot name.
 func (a *app) toggleTheme(c *ui.Context) {
-	a.lightTheme = !a.lightTheme
-	if a.lightTheme {
+	switch a.cfg.Theme {
+	case "auto":
 		a.cfg.Theme = "light"
-		c.Toast("已切换为白天浅色模式")
-	} else {
+	case "light":
 		a.cfg.Theme = "dark"
-		c.Toast("已切换为深色工业模式")
+	default:
+		a.cfg.Theme = "auto"
+	}
+	a.applyTheme()
+	switch a.cfg.Theme {
+	case "auto":
+		c.Toast("外观跟随系统")
+	case "light":
+		c.Toast("已切换为浅色外观")
+	default:
+		c.Toast("已切换为深色外观")
 	}
 	_ = saveConfig(a.exeDir, a.cfg)
+}
+
+// applyTheme resolves the configured appearance. "auto" follows the desktop,
+// and a change of the desktop appearance reaches the window through
+// Theme.OnUpdated registered in main.
+func (a *app) applyTheme() {
+	switch a.cfg.Theme {
+	case "light":
+		a.lightTheme = false
+	case "dark":
+		a.lightTheme = true
+	default:
+		if mygo.App.IsReady() {
+			a.systemDark = mygo.Theme.IsDark()
+			a.lightTheme = a.systemDark
+		} else {
+			// Before the app starts, its desktop is not available; the
+			// first ready frame resolves the real appearance.
+			a.lightTheme = false
+		}
+	}
+}
+
+// themeButton describes the switch for the toolbar: its icon shows what the
+// next click gives, and its label names the current source.
+func (a *app) themeButton() (iconName, tip string) {
+	switch a.cfg.Theme {
+	case "auto":
+		if a.systemDark {
+			return "sun", "外观跟随系统（深色），点击切换为浅色"
+		}
+		return "moon", "外观跟随系统（浅色），点击切换为深色"
+	case "light":
+		return "moon", "浅色外观，点击切换为深色"
+	default:
+		return "sun", "深色外观，点击跟随系统"
+	}
 }
 
 func (a *app) openSettingsTab(tab int) {
@@ -769,6 +909,8 @@ func (a *app) saveDatasheetSettings(c *ui.Context) {
 	} else {
 		c.Toast("路径配置已更新并保存")
 	}
+	// New folders or a new interval re-arm the background refresh.
+	a.restartAutoSync()
 	a.datasheetModalOpen = false
 }
 
@@ -777,25 +919,54 @@ func (a *app) refreshDatasheetScan(c *ui.Context) {
 	a.scanDatasheetsAsync(true)
 }
 
+// openExcelFile opens the workbook's local copy, never the source: the
+// configured folder may be a network share, and the app promises not to lock
+// or edit it. Excel gets the edit password when the setting is on.
 func (a *app) openExcelFile(c *ui.Context, filename string) {
-	resolved := resolveExcelPath(a.exeDir, a.cfg.MasterlistPaths, filename)
-	if resolved == "" {
-		c.Toast("未在原表目录中找到文件：" + filename + "，请先配置原表路径")
-		a.openSettingsTab(1)
+	if !fileExists(localWorkbookPath(a.exeDir, filename)) {
+		syncErr := a.ensureLocalWorkbook(filename)
+		if syncErr != nil {
+			c.Toast(syncErr.Error())
+			return
+		}
+	}
+	res := openWorkbookInExcel(a.exeDir, filename, a.cfg.ExcelPassword, a.cfg.OpenExcelPassword)
+	if res.Err != nil {
+		c.Toast("打开 Excel 失败: " + res.Err.Error())
 		return
 	}
-	if err := mygo.Shell.OpenPath(resolved); err != nil {
-		c.Toast("打开 Excel 失败: " + err.Error())
+	if res.Private {
+		c.Toast("已打开本地副本: " + filename)
 	} else {
-		c.Toast("正在打开原表: " + filename)
+		c.Toast("已打开原表: " + filename)
 	}
 }
 
+// ensureLocalWorkbook fetches one workbook when its copy is missing, so the
+// first open of a file works even before a full sync.
+func (a *app) ensureLocalWorkbook(filename string) error {
+	for _, source := range resolveAllExcelPaths(a.exeDir, filename, a.cfg.MasterlistPaths) {
+		if err := copyFileAtomic(source, localWorkbookPath(a.exeDir, filename)); err != nil {
+			return fmt.Errorf("复制原表副本失败: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("未在原表目录中找到文件：%s，请先配置原表路径", filename)
+}
+
+// locateExcelFile shows the local copy in Explorer. Revealing the source
+// would mean browsing the share, which the setting keeps the app out of.
 func (a *app) locateExcelFile(c *ui.Context, filename string) {
-	resolved := resolveExcelPath(a.exeDir, a.cfg.MasterlistPaths, filename)
+	resolved := localWorkbookFor(a.exeDir, filename)
 	if resolved == "" {
-		c.Toast("未在原表目录中找到文件：" + filename + "，请先配置原表路径")
-		a.openSettingsTab(1)
+		if err := a.ensureLocalWorkbook(filename); err != nil {
+			c.Toast(err.Error())
+			return
+		}
+		resolved = localWorkbookFor(a.exeDir, filename)
+	}
+	if resolved == "" {
+		c.Toast("没有这份原表的本地副本")
 		return
 	}
 	mygo.Shell.ShowItemInFolder(resolved)

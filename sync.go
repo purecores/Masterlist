@@ -13,16 +13,19 @@ import (
 )
 
 type SyncResult struct {
-	FilesScanned    int      `json:"files_scanned"`
-	FilesSkipped    int      `json:"files_skipped"`
-	SheetsScanned   int      `json:"sheets_scanned"`
-	NewPartsAdded   int      `json:"new_parts_added"`
-	UpdatedParts    int      `json:"updated_parts"`
-	UnchangedParts  int      `json:"unchanged_parts"`
-	ManualPreserved int      `json:"manual_preserved"`
-	Errors          []string `json:"errors"`
-	SummaryMessage  string   `json:"summary_message"`
-	DryRun          bool     `json:"dry_run"`
+	FilesScanned      int      `json:"files_scanned"`
+	LocalCopies       int      `json:"local_copies"`
+	LocalCopiesKept   int      `json:"local_copies_kept"`
+	LocalCopiesFailed int      `json:"local_copies_failed"`
+	FilesSkipped      int      `json:"files_skipped"`
+	SheetsScanned     int      `json:"sheets_scanned"`
+	NewPartsAdded     int      `json:"new_parts_added"`
+	UpdatedParts      int      `json:"updated_parts"`
+	UnchangedParts    int      `json:"unchanged_parts"`
+	ManualPreserved   int      `json:"manual_preserved"`
+	Errors            []string `json:"errors"`
+	SummaryMessage    string   `json:"summary_message"`
+	DryRun            bool     `json:"dry_run"`
 }
 
 var headerCleanRe = regexp.MustCompile(`[\s_\-]+`)
@@ -104,6 +107,7 @@ type colMapping struct {
 	spareLevel  int
 	activeFlag  int
 	alternateNo int
+	relatedPart int
 	// alt maps a second occurrence of a column: the relay kit list and the
 	// inactive-parts cross-reference carry two number/name pairs in one
 	// row, and both are real parts.
@@ -116,7 +120,7 @@ func emptyMapping() colMapping {
 		spec: -1, mfr: -1, orderNo: -1, unit: -1,
 		dispo: -1, cert: -1, machine: -1, remark: -1,
 		importFlag: -1, price: -1, spareLevel: -1, activeFlag: -1,
-		alternateNo: -1,
+		alternateNo: -1, relatedPart: -1,
 	}
 }
 
@@ -156,6 +160,8 @@ func mappingField(m *colMapping, field string) *int {
 		return &m.activeFlag
 	case "alternateNo":
 		return &m.alternateNo
+	case "relatedPart":
+		return &m.relatedPart
 	}
 	return nil
 }
@@ -233,8 +239,12 @@ func detectHeaders(rows [][]string) (int, colMapping) {
 			case strings.Contains(h, "激活") || strings.Contains(h, "i/a") ||
 				strings.Contains(h, "active") || strings.Contains(h, "有效"):
 				field = "activeFlag"
-			case strings.Contains(h, "alternate") || strings.Contains(h, "旧零件") || strings.Contains(h, "gno"):
+			case strings.Contains(h, "二手零件") || strings.Contains(h, "二手件") ||
+				strings.Contains(h, "alternate") || strings.Contains(h, "旧零件") || strings.Contains(h, "gno"):
 				field = "alternateNo"
+			case strings.Contains(h, "关联零件") || strings.Contains(h, "相关零件") ||
+				strings.Contains(h, "relatedpart") || strings.Contains(h, "组装件"):
+				field = "relatedPart"
 			}
 			if field != "" {
 				cur.assign(field, c)
@@ -457,6 +467,22 @@ func syncExcelMasterlist(ctx context.Context, store *Store, exeDir string, paths
 	}
 	res.FilesScanned = len(files)
 
+	// Import from the app's own copy of each workbook. The source folders may
+	// be network shares: reading the local copies keeps the import fast and
+	// reliable, and leaves the originals untouched.
+	if !dryRun {
+		copied, unchanged, missing, copyNotes := syncLocalWorkbooks(exeDir, files)
+		res.LocalCopies = copied
+		res.LocalCopiesKept = unchanged
+		res.LocalCopiesFailed = missing
+		res.Errors = append(res.Errors, copyNotes...)
+		for name := range files {
+			if local := localWorkbookFor(exeDir, name); local != "" {
+				files[name] = local
+			}
+		}
+	}
+
 	names := make([]string, 0, len(files))
 	for name := range files {
 		names = append(names, name)
@@ -494,7 +520,13 @@ func syncExcelMasterlist(ctx context.Context, store *Store, exeDir string, paths
 			}
 
 			for r := headerIdx + 1; r < len(sheet.rows); r++ {
-				for _, p := range partsFromRow(sheet.rows[r], m, fileName, sheet.name, category, int64(r+1)) {
+				red := workbook.cellRed(sheet.name, r+1, m.bhsNo+1)
+				for _, p := range partsFromRow(sheet.rows[r], m, fileName, sheet.name, category, int64(r+1), red) {
+					if red {
+						// The production sheets mark a disused part by painting
+						// its number red; it stays listed as historical.
+						p.Status = "obsolete"
+					}
 					p.Origin = "import"
 					p.SearchText = partSearchText(p)
 
@@ -521,6 +553,10 @@ func syncExcelMasterlist(ctx context.Context, store *Store, exeDir string, paths
 						continue
 					}
 					res.UpdatedParts++
+					if os.Getenv("MASTERLIST_DEBUG_SYNC") != "" && res.UpdatedParts <= 30 {
+						fmt.Fprintf(os.Stderr, "UPDATE id=%d oldRow=%d newRow=%d :: %s\n",
+							existing.id, existing.p.SourceRow, p.SourceRow, partDiff(&existing.p, p))
+					}
 					if !dryRun {
 						if err := updateImportedPart(ctx, store, existing.id, p, now); err != nil {
 							res.Errors = append(res.Errors, fmt.Sprintf("%s / %s 第 %d 行: %v", fileName, sheet.name, p.SourceRow, err))
@@ -560,8 +596,8 @@ func syncExcelMasterlist(ctx context.Context, store *Store, exeDir string, paths
 // carries a second number/name pair (a relay kit with its component, or an
 // inactive part beside its replacement). Empty and decorative rows produce
 // none.
-func partsFromRow(row []string, m colMapping, fileName, sheetName, category string, sourceRow int64) []*Part {
-	primary := partFromRowWith(row, &m, fileName, sheetName, category, sourceRow, nil)
+func partsFromRow(row []string, m colMapping, fileName, sheetName, category string, sourceRow int64, red bool) []*Part {
+	primary := partFromRowWith(row, &m, fileName, sheetName, category, sourceRow, nil, red)
 	var parts []*Part
 	if primary != nil {
 		parts = append(parts, primary)
@@ -569,7 +605,7 @@ func partsFromRow(row []string, m colMapping, fileName, sheetName, category stri
 	if m.alt == nil || m.alt.bhsNo < 0 {
 		return parts
 	}
-	second := partFromRowWith(row, m.alt, fileName, sheetName, category, sourceRow, &m)
+	second := partFromRowWith(row, m.alt, fileName, sheetName, category, sourceRow, &m, false)
 	if second == nil {
 		return parts
 	}
@@ -580,7 +616,7 @@ func partsFromRow(row []string, m colMapping, fileName, sheetName, category stri
 	return parts
 }
 
-func partFromRowWith(row []string, m *colMapping, fileName, sheetName, category string, sourceRow int64, fallback *colMapping) *Part {
+func partFromRowWith(row []string, m *colMapping, fileName, sheetName, category string, sourceRow int64, fallback *colMapping, red bool) *Part {
 	// shared reads a field from this group, then from the primary group
 	// when this group lacks it: a relay's components keep the system spec
 	// and brand in one pair of columns shared with the kit.
@@ -655,7 +691,9 @@ func partFromRowWith(row []string, m *colMapping, fileName, sheetName, category 
 		SpareLevel:    shared("spareLevel"),
 		ActiveFlag:    activeFlag,
 		AlternateNo:   shared("alternateNo"),
+		RelatedPart:   shared("relatedPart"),
 		Status:        rowStatus(sheetName, category, activeFlag),
+		Discontinued:  red,
 		SourceFile:    fileName,
 		SourceSheet:   sheetName,
 		SourceRow:     sourceRow,
@@ -672,88 +710,118 @@ func findExistingImport(ctx context.Context, store *Store, fileName, sheet strin
 		SELECT id, origin, bhs_no, description_cn, description_en, spec,
 		       manufacturer, order_no, category, subcategory, unit, dispo,
 		       cert, machine, import_flag, remark, price, spare_level,
-		       active_flag, alternate_no, status,
+		       active_flag, alternate_no, related_part, status, extra_json,
 		       source_file, source_sheet, source_row
 		FROM parts
 		WHERE ` + normSourceSQL + ` = ?`
 
-	type query struct {
-		sql  string
-		args []any
-	}
-	// Identity is the number first, then its row: two parts can share a
-	// row number across the block a sheet repeats (a cabinet's bill of
-	// materials lists the same sub-parts under several cabinets), so a
-	// row-number-only match is never allowed to rewrite another part.
-	queries := []query{}
+	// One source row can name several parts, and a workbook repeats the
+	// same number in several rows with different machine ranges. A fallback
+	// therefore only accepts a candidate whose imported fields all match;
+	// otherwise the row is a second, distinct part and is inserted rather
+	// than overwriting an older row.
+	direct := base
+	var args []any
 	if fresh.BHSNo != "" {
-		queries = append(queries,
-			// Same sheet and row with the same number: a spec change must
-			// update this part, not insert a second one beside it.
-			query{base + ` AND bhs_no = ? AND source_sheet = ? AND source_row = ? LIMIT 1`, []any{stem, fresh.BHSNo, sheet, sourceRow}},
-			// The row moved, but the part and its spec stayed the same.
-			query{base + ` AND bhs_no = ? AND source_sheet = ? AND spec = ? LIMIT 1`, []any{stem, fresh.BHSNo, sheet, fresh.Spec}},
-		)
+		direct += ` AND bhs_no = ? AND source_sheet = ? AND source_row = ? LIMIT 1`
+		args = []any{stem, fresh.BHSNo, sheet, sourceRow}
 	} else {
-		queries = append(queries,
-			query{base + ` AND description_cn = ? AND source_sheet = ? AND spec = ? AND source_row = ? LIMIT 1`, []any{stem, fresh.DescriptionCN, sheet, fresh.Spec, sourceRow}},
-			query{base + ` AND description_cn = ? AND source_sheet = ? AND spec = ? LIMIT 1`, []any{stem, fresh.DescriptionCN, sheet, fresh.Spec}},
-		)
+		direct += ` AND description_cn = ? AND source_sheet = ? AND source_row = ? LIMIT 1`
+		args = []any{stem, fresh.DescriptionCN, sheet, sourceRow}
 	}
-	if fresh.BHSNo != "" {
-		queries = append(queries,
-			query{base + ` AND bhs_no = ? AND spec = ? AND source_sheet = ? LIMIT 1`, []any{stem, fresh.BHSNo, fresh.Spec, sheet}},
-			query{base + ` AND bhs_no = ? AND spec = ? LIMIT 1`, []any{stem, fresh.BHSNo, fresh.Spec}},
-		)
-	} else {
-		// Un-numbered accessories keep their place after a row shift when
-		// their name and specification still match.
-		queries = append(queries,
-			query{base + ` AND source_sheet = ? AND description_cn = ? AND spec = ? LIMIT 1`,
-				[]any{stem, sheet, fresh.DescriptionCN, fresh.Spec}},
-		)
+	if hit, err := queryOneImport(ctx, store, direct, args); err != nil {
+		return nil, err
+	} else if hit != nil {
+		return hit, nil
 	}
 
-	for _, q := range queries {
-		rows, err := store.db.Query(ctx, q.sql, q.args...)
+	// A row that moved: look for an exact field match in the same sheet.
+	var candidates []string
+	var candidateArgs [][]any
+	if fresh.BHSNo != "" {
+		candidates = append(candidates, base+` AND bhs_no = ? AND source_sheet = ? LIMIT 20`)
+		candidateArgs = append(candidateArgs, []any{stem, fresh.BHSNo, sheet})
+	} else {
+		candidates = append(candidates, base+` AND description_cn = ? AND source_sheet = ? LIMIT 20`)
+		candidateArgs = append(candidateArgs, []any{stem, fresh.DescriptionCN, sheet})
+	}
+	// A renamed sheet: the same number and spec anywhere in the workbook.
+	if fresh.BHSNo != "" {
+		candidates = append(candidates, base+` AND bhs_no = ? AND spec = ? LIMIT 20`)
+		candidateArgs = append(candidateArgs, []any{stem, fresh.BHSNo, fresh.Spec})
+	}
+	for i, query := range candidates {
+		hits, err := queryImportCandidates(ctx, store, query, candidateArgs[i])
 		if err != nil {
 			return nil, err
 		}
-		if len(rows.Values) == 0 {
-			continue
+		for _, hit := range hits {
+			if sameSheet := i == 0 || i == 1; sameSheet {
+				if importedPartEqual(&hit.p, fresh) {
+					return hit, nil
+				}
+				continue
+			}
+			// The sheet may have been renamed: every other imported field
+			// must still match, and there must be exactly one such row.
+			if len(hits) == 1 && importedPartEqualExceptSheet(&hit.p, fresh) {
+				return hit, nil
+			}
 		}
-		idx := columnIndex(rows.Columns)
-		v := rows.Values[0]
-		return &existingImport{
-			id:     intValue(v, idx, "id"),
-			origin: stringValue(v, idx, "origin"),
-			p: Part{
-				BHSNo:         stringValue(v, idx, "bhs_no"),
-				DescriptionCN: stringValue(v, idx, "description_cn"),
-				DescriptionEN: stringValue(v, idx, "description_en"),
-				Spec:          stringValue(v, idx, "spec"),
-				Manufacturer:  stringValue(v, idx, "manufacturer"),
-				OrderNo:       stringValue(v, idx, "order_no"),
-				Category:      stringValue(v, idx, "category"),
-				Subcategory:   stringValue(v, idx, "subcategory"),
-				Unit:          stringValue(v, idx, "unit"),
-				Dispo:         stringValue(v, idx, "dispo"),
-				Cert:          stringValue(v, idx, "cert"),
-				Machine:       stringValue(v, idx, "machine"),
-				ImportFlag:    stringValue(v, idx, "import_flag"),
-				Remark:        stringValue(v, idx, "remark"),
-				Price:         stringValue(v, idx, "price"),
-				SpareLevel:    stringValue(v, idx, "spare_level"),
-				ActiveFlag:    stringValue(v, idx, "active_flag"),
-				AlternateNo:   stringValue(v, idx, "alternate_no"),
-				Status:        stringValue(v, idx, "status"),
-				SourceFile:    stringValue(v, idx, "source_file"),
-				SourceSheet:   stringValue(v, idx, "source_sheet"),
-				SourceRow:     intValue(v, idx, "source_row"),
-			},
-		}, nil
 	}
 	return nil, nil
+}
+
+func queryOneImport(ctx context.Context, store *Store, query string, args []any) (*existingImport, error) {
+	hits, err := queryImportCandidates(ctx, store, query, args)
+	if err != nil || len(hits) == 0 {
+		return nil, err
+	}
+	return hits[0], nil
+}
+
+func queryImportCandidates(ctx context.Context, store *Store, query string, args []any) ([]*existingImport, error) {
+	rows, err := store.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	idx := columnIndex(rows.Columns)
+	hits := make([]*existingImport, 0, len(rows.Values))
+	for _, v := range rows.Values {
+		part := Part{
+			BHSNo:         stringValue(v, idx, "bhs_no"),
+			DescriptionCN: stringValue(v, idx, "description_cn"),
+			DescriptionEN: stringValue(v, idx, "description_en"),
+			Spec:          stringValue(v, idx, "spec"),
+			Manufacturer:  stringValue(v, idx, "manufacturer"),
+			OrderNo:       stringValue(v, idx, "order_no"),
+			Category:      stringValue(v, idx, "category"),
+			Subcategory:   stringValue(v, idx, "subcategory"),
+			Unit:          stringValue(v, idx, "unit"),
+			Dispo:         stringValue(v, idx, "dispo"),
+			Cert:          stringValue(v, idx, "cert"),
+			Machine:       stringValue(v, idx, "machine"),
+			ImportFlag:    stringValue(v, idx, "import_flag"),
+			Remark:        stringValue(v, idx, "remark"),
+			Price:         stringValue(v, idx, "price"),
+			SpareLevel:    stringValue(v, idx, "spare_level"),
+			ActiveFlag:    stringValue(v, idx, "active_flag"),
+			AlternateNo:   stringValue(v, idx, "alternate_no"),
+			RelatedPart:   stringValue(v, idx, "related_part"),
+			Status:        stringValue(v, idx, "status"),
+			ExtraJSON:     stringValue(v, idx, "extra_json"),
+			SourceFile:    stringValue(v, idx, "source_file"),
+			SourceSheet:   stringValue(v, idx, "source_sheet"),
+			SourceRow:     intValue(v, idx, "source_row"),
+		}
+		part.Discontinued = strings.Contains(part.ExtraJSON, `"discontinued":true`)
+		hits = append(hits, &existingImport{
+			id:     intValue(v, idx, "id"),
+			origin: stringValue(v, idx, "origin"),
+			p:      part,
+		})
+	}
+	return hits, nil
 }
 
 // importedPartEqual compares every column the sync writes, so a change to
@@ -778,18 +846,89 @@ func importedPartEqual(old, fresh *Part) bool {
 		old.SpareLevel == fresh.SpareLevel &&
 		old.ActiveFlag == fresh.ActiveFlag &&
 		old.AlternateNo == fresh.AlternateNo &&
+		old.RelatedPart == fresh.RelatedPart &&
 		old.Status == fresh.Status &&
+		old.Discontinued == fresh.Discontinued &&
 		old.SourceSheet == fresh.SourceSheet
 }
 
+func partDiff(old, fresh *Part) string {
+	var b strings.Builder
+	add := func(name, a, c string) {
+		if a != c {
+			fmt.Fprintf(&b, "%s[%q->%q] ", name, a, c)
+		}
+	}
+	add("file", old.SourceFile, fresh.SourceFile)
+	add("bhs", old.BHSNo, fresh.BHSNo)
+	add("cn", old.DescriptionCN, fresh.DescriptionCN)
+	add("en", old.DescriptionEN, fresh.DescriptionEN)
+	add("spec", old.Spec, fresh.Spec)
+	add("mfr", old.Manufacturer, fresh.Manufacturer)
+	add("order", old.OrderNo, fresh.OrderNo)
+	add("cat", old.Category, fresh.Category)
+	add("sub", old.Subcategory, fresh.Subcategory)
+	add("unit", old.Unit, fresh.Unit)
+	add("dispo", old.Dispo, fresh.Dispo)
+	add("cert", old.Cert, fresh.Cert)
+	add("machine", old.Machine, fresh.Machine)
+	add("import", old.ImportFlag, fresh.ImportFlag)
+	add("remark", old.Remark, fresh.Remark)
+	add("price", old.Price, fresh.Price)
+	add("spare", old.SpareLevel, fresh.SpareLevel)
+	add("active", old.ActiveFlag, fresh.ActiveFlag)
+	add("alt", old.AlternateNo, fresh.AlternateNo)
+	add("rel", old.RelatedPart, fresh.RelatedPart)
+	add("status", old.Status, fresh.Status)
+	if old.Discontinued != fresh.Discontinued {
+		fmt.Fprintf(&b, "disc[%v->%v] ", old.Discontinued, fresh.Discontinued)
+	}
+	return b.String()
+}
+
+// discontinuedExtra keeps the extra_json column's other keys while recording
+// whether this row is marked as disused in the original table.
+func discontinuedExtra(discontinued bool) string {
+	if discontinued {
+		return `{"discontinued":true}`
+	}
+	return "{}"
+}
+
+func importedPartEqualExceptSheet(old, fresh *Part) bool {
+	return normalizeSourceStem(old.SourceFile) == normalizeSourceStem(fresh.SourceFile) &&
+		old.BHSNo == fresh.BHSNo &&
+		old.DescriptionCN == fresh.DescriptionCN &&
+		old.DescriptionEN == fresh.DescriptionEN &&
+		old.Spec == fresh.Spec &&
+		old.Manufacturer == fresh.Manufacturer &&
+		old.OrderNo == fresh.OrderNo &&
+		old.Category == fresh.Category &&
+		old.Subcategory == fresh.Subcategory &&
+		old.Unit == fresh.Unit &&
+		old.Dispo == fresh.Dispo &&
+		old.Cert == fresh.Cert &&
+		old.Machine == fresh.Machine &&
+		old.ImportFlag == fresh.ImportFlag &&
+		old.Remark == fresh.Remark &&
+		old.Price == fresh.Price &&
+		old.SpareLevel == fresh.SpareLevel &&
+		old.ActiveFlag == fresh.ActiveFlag &&
+		old.AlternateNo == fresh.AlternateNo &&
+		old.RelatedPart == fresh.RelatedPart &&
+		old.Status == fresh.Status &&
+		old.Discontinued == fresh.Discontinued
+}
+
 func updateImportedPart(ctx context.Context, store *Store, id int64, p *Part, now string) error {
+	extra := discontinuedExtra(p.Discontinued)
 	_, err := store.db.Execute(ctx, `
 		UPDATE parts SET
 			bhs_no = ?, description_cn = ?, description_en = ?, spec = ?,
 			manufacturer = ?, order_no = ?, category = ?, subcategory = ?,
 			unit = ?, dispo = ?, cert = ?, machine = ?, import_flag = ?,
 			remark = ?, price = ?, spare_level = ?, active_flag = ?,
-			alternate_no = ?, status = ?, search_text = ?,
+			alternate_no = ?, related_part = ?, status = ?, search_text = ?, extra_json = ?,
 			source_file = ?, source_sheet = ?, source_row = ?, updated_at = ?
 		WHERE id = ?
 	`,
@@ -797,28 +936,29 @@ func updateImportedPart(ctx context.Context, store *Store, id int64, p *Part, no
 		p.Manufacturer, p.OrderNo, p.Category, p.Subcategory,
 		p.Unit, p.Dispo, p.Cert, p.Machine, p.ImportFlag,
 		p.Remark, p.Price, p.SpareLevel, p.ActiveFlag,
-		p.AlternateNo, p.Status, p.SearchText,
+		p.AlternateNo, p.RelatedPart, p.Status, p.SearchText, extra,
 		p.SourceFile, p.SourceSheet, p.SourceRow, now, id,
 	)
 	return err
 }
 
 func insertImportedPart(ctx context.Context, store *Store, p *Part, now string) error {
+	extra := discontinuedExtra(p.Discontinued)
 	_, err := store.db.Execute(ctx, `
 		INSERT INTO parts (
 			bhs_no, description_cn, description_en, spec, manufacturer,
 			order_no, category, subcategory, unit, dispo, cert, machine,
 			import_flag, remark, price, spare_level, active_flag,
-			alternate_no, status, origin, search_text, source_file,
+			alternate_no, related_part, status, origin, search_text, extra_json, source_file,
 			source_sheet, source_row, created_at, updated_at
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 	`,
 		p.BHSNo, p.DescriptionCN, p.DescriptionEN, p.Spec, p.Manufacturer,
 		p.OrderNo, p.Category, p.Subcategory, p.Unit, p.Dispo, p.Cert, p.Machine,
 		p.ImportFlag, p.Remark, p.Price, p.SpareLevel, p.ActiveFlag,
-		p.AlternateNo, p.Status, "import", p.SearchText, p.SourceFile,
+		p.AlternateNo, p.RelatedPart, p.Status, "import", p.SearchText, extra, p.SourceFile,
 		p.SourceSheet, p.SourceRow, now, now,
 	)
 	return err

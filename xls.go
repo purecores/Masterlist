@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	xls "github.com/shakinm/xlsReader/xls"
@@ -11,10 +12,11 @@ import (
 // workbook is the common view the sync uses of an Excel file, whatever its
 // format: sheet name and its rows as text.
 type workbookReader struct {
-	excel  *excelize.File
-	xls    *xls.Workbook
-	sheets []worksheetData
-	err    string
+	excel     *excelize.File
+	xls       *xls.Workbook
+	sheets    []worksheetData
+	err       string
+	redStyles map[int]bool
 }
 
 type worksheetData struct {
@@ -44,7 +46,7 @@ func openXLSXWorkbook(path string) (*workbookReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	wb := &workbookReader{excel: f}
+	wb := &workbookReader{excel: f, redStyles: map[int]bool{}}
 	for _, name := range f.GetSheetList() {
 		rows, err := f.GetRows(name)
 		if err != nil {
@@ -87,6 +89,69 @@ func openXLSWorkbook(path string) (*workbookReader, error) {
 		wb.sheets = append(wb.sheets, worksheetData{name: sheet.GetName(), rows: rows})
 	}
 	return wb, nil
+}
+
+// cellRed reports whether a cell's text or fill is red, the production
+// sheets' mark for a discontinued part. Styles are read once per workbook,
+// not once per row.
+func (w *workbookReader) cellRed(sheet string, row, col int) bool {
+	if w == nil || w.excel == nil || row < 1 || col < 1 {
+		return false
+	}
+	cell, err := excelize.CoordinatesToCellName(col, row)
+	if err != nil {
+		return false
+	}
+	styleID, err := w.excel.GetCellStyle(sheet, cell)
+	if err != nil {
+		return false
+	}
+	if red, ok := w.redStyles[styleID]; ok {
+		return red
+	}
+	style, err := w.excel.GetStyle(styleID)
+	if err != nil {
+		return false
+	}
+	red := false
+	if style.Font != nil {
+		red = isRedColor(style.Font.Color) || style.Font.ColorIndexed == 2
+		// newer files store colours in the theme instead of a plain ARGB,
+		// so a red theme colour with a plain index also counts
+		if !red && style.Font.ColorTheme != nil {
+			red = false
+		}
+	}
+	if !red {
+		for _, color := range style.Fill.Color {
+			if isRedColor(color) {
+				red = true
+				break
+			}
+		}
+	}
+	w.redStyles[styleID] = red
+	return red
+}
+
+// isRedColor recognises explicit reds, including ARGB values such as
+// FFFF0000 and the "#RRGGBB" form of newer files.
+func isRedColor(value string) bool {
+	value = strings.TrimPrefix(strings.TrimSpace(value), "#")
+	if len(value) == 8 {
+		// AARRGGBB: drop the alpha byte.
+		value = value[2:]
+	}
+	if len(value) != 6 {
+		return false
+	}
+	r, err1 := strconv.ParseInt(value[0:2], 16, 64)
+	g, err2 := strconv.ParseInt(value[2:4], 16, 64)
+	b, err3 := strconv.ParseInt(value[4:6], 16, 64)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return false
+	}
+	return r >= 0xB0 && g <= 0x80 && b <= 0x80
 }
 
 func (w *workbookReader) Close() {

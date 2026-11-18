@@ -157,7 +157,7 @@ func TestSortAndFilter(t *testing.T) {
 	}
 
 	// Sorting by BHS number, both directions.
-	a.setSort("BHS 编号")
+	a.setSort("零件号")
 	if a.results[0].BHSNo != "A001" {
 		t.Errorf("ascending BHS sort starts with %s", a.results[0].BHSNo)
 	}

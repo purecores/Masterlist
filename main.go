@@ -14,7 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-//go:embed data/masterlist.example.db
+//go:embed data/masterlist.db
 var seedDatabase []byte
 
 //go:embed assets/mygo-sqlite3.dll
@@ -75,7 +75,7 @@ func main() {
 		}
 		a.dbPath = dbPath
 		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:           "BHS 电气柜单元器件库",
+			Title:           "电气柜器件库",
 			Width:           1360,
 			Height:          860,
 			MinWidth:        1060,
@@ -87,6 +87,14 @@ func main() {
 			Content:         ui.View(a.view),
 		})
 		a.win = win
+		// Follow the desktop's light/dark appearance, and react when it
+		// changes while the app is open.
+		mygo.Theme.SetSource(mygo.ThemeSystem)
+		a.applyTheme()
+		mygo.Theme.OnUpdated(func() {
+			a.applyTheme()
+			win.Invalidate()
+		})
 		if len(appIconBytes) > 0 {
 			_ = win.SetIcon(appIconBytes)
 		}
@@ -101,11 +109,13 @@ func main() {
 		// The tray icon lives as long as the app: closing the window hides
 		// it there when the setting asks for that.
 		a.setupTray()
+		a.startAutoSync()
 		if a.loadErr == "" {
 			go a.loadData(win)
 		}
 		mygo.App.OnQuit(func() {
 			a.quitting = true
+			a.stopAutoSync()
 			a.destroyTray()
 			if a.store != nil {
 				_ = a.store.Close()

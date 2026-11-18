@@ -48,9 +48,12 @@ type Part struct {
 	SourceFile    string
 	SourceSheet   string
 	SourceRow     int64
-	CreatedAt     string
-	UpdatedAt     string
-	Duplicate     int
+	// Discontinued marks a row whose part-number cell is red in the original
+	// table, the production sheets' mark for a disused part.
+	Discontinued bool
+	CreatedAt    string
+	UpdatedAt    string
+	Duplicate    int
 }
 
 func (p *Part) Name() string {
@@ -209,6 +212,7 @@ func (s *Store) LoadAll(ctx context.Context) ([]*Part, []WorkbookInfo, Summary, 
 			CreatedAt:     stringValue(values, index, "created_at"),
 			UpdatedAt:     stringValue(values, index, "updated_at"),
 		}
+		p.Discontinued = strings.Contains(p.ExtraJSON, `"discontinued":true`)
 		parts = append(parts, p)
 	}
 

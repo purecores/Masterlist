@@ -160,7 +160,7 @@ func TestResolveExcel(t *testing.T) {
 
 func TestSyncMasterlist(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenStore(ctx, "data/masterlist.example.db")
+	store, err := OpenStore(ctx, "data/masterlist.db")
 	if err != nil {
 		t.Skip("skipping test if db not present:", err)
 		return

@@ -33,7 +33,7 @@ func (a *app) fileListModal(c *ui.Context, pal *Palette) {
 
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if ui.SearchField(c, &a.fileListQuery).Label("搜索手册文件").
-				Placeholder("按文件名、BHS 编号或目录搜索").Grow(1).
+				Placeholder("按文件名、零件号或目录搜索").Grow(1).
 				Changed() {
 				a.refreshFileListDisplay()
 			}

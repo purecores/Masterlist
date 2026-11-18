@@ -3,7 +3,6 @@
 /data/masterlist.db-journal
 /data/masterlist.db-shm
 /data/masterlist.db-wal
-/data/masterlist.db
 /config.json
 /window-state.json
 /*.exe

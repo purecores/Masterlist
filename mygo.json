@@ -1,7 +1,10 @@
 {
-  "name": "BHS Masterlist",
-  "identifier": "com.bhs.masterlist",
-  "version": "0.3.0",
+  "name": "Masterlist",
+  "identifier": "com.purecores.masterlist",
+  "version": "0.4.0",
   "icon": "resources/icon.png",
+  "windows": {
+    "displayName": "电气柜器件库"
+  },
   "out": "build"
 }

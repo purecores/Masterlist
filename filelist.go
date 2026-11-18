@@ -21,8 +21,8 @@ func (a *app) fileListModal(c *ui.Context, pal *Palette) {
 		Shadow(0, 24, 64, 0, ui.RGBA(0, 0, 0, 0.35)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Gap(2).Grow(1).Children(func() {
-				ui.Text(c, "数据手册文件列表").FontSize(17).FontWeight(600).TextColor(pal.Text)
-				ui.Text(c, a.fileLibraryMeta()).FontSize(11.5).TextColor(pal.TextMuted).SingleLine()
+				ui.Text(c, "数据手册文件列表").FontSize(sf(17)).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, a.fileLibraryMeta()).FontSize(sf(11.5)).TextColor(pal.TextMuted).SingleLine()
 			})
 			closeBtn := iconButton(c, "x", "关闭", pal)
 			if closeBtn.Clicked() {
@@ -68,20 +68,20 @@ func (a *app) fileListModal(c *ui.Context, pal *Palette) {
 				msgColor = pal.DangerText
 				bg = pal.Danger.Alpha(0.12)
 			}
-			ui.Text(c, a.fileListStatus).FontSize(10.5).TextColor(msgColor).
+			ui.Text(c, a.fileListStatus).FontSize(sf(10.5)).TextColor(msgColor).
 				Padding(5, 9).Radius(4).Background(bg).Wrap()
 		}
 
 		ui.Row(c).Height(30).Padding(0, 12).Gap(10).AlignItems(ui.Center).
 			Background(pal.MainBg).BorderWidth(0, 0, 1, 0).BorderColor(pal.Border).
 			Children(func() {
-				ui.Text(c, "文件名").FontSize(10.5).FontWeight(500).
+				ui.Text(c, "文件名").FontSize(sf(10.5)).FontWeight(500).
 					TextColor(pal.TextFaint).Grow(1).SingleLine()
-				ui.Text(c, "大小").FontSize(10.5).FontWeight(500).
+				ui.Text(c, "大小").FontSize(sf(10.5)).FontWeight(500).
 					TextColor(pal.TextFaint).Width(74).SingleLine()
-				ui.Text(c, "修改时间").FontSize(10.5).FontWeight(500).
+				ui.Text(c, "修改时间").FontSize(sf(10.5)).FontWeight(500).
 					TextColor(pal.TextFaint).Width(126).SingleLine()
-				ui.Text(c, "操作").FontSize(10.5).FontWeight(500).
+				ui.Text(c, "操作").FontSize(sf(10.5)).FontWeight(500).
 					TextColor(pal.TextFaint).Width(96).SingleLine()
 			})
 
@@ -116,10 +116,10 @@ func (a *app) fileListModal(c *ui.Context, pal *Palette) {
 
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 			ui.Textf(c, "共 %s 份文件 · %d 个文件夹", formatInt(len(files)), a.fileListDirCount(rows)).
-				FontSize(10.5).TextColor(pal.TextFaint)
+				FontSize(sf(10.5)).TextColor(pal.TextFaint)
 			ui.Spacer(c)
 			ui.Text(c, "按文件大小去重的相同手册仅显示一份；此列表包含全部物理文件。").
-				FontSize(10).TextColor(pal.TextFaint).SingleLine()
+				FontSize(sf(10)).TextColor(pal.TextFaint).SingleLine()
 		})
 	})
 }
@@ -142,11 +142,11 @@ func (a *app) fileListRow(row ui.ListRow, rows []fileRow, pal *Palette) {
 			Background(pal.Surface).BorderWidth(1, 0, 1, 0).BorderColor(pal.BorderSubtle).
 			Children(func() {
 				if ic := icon("folder-open"); ic != nil {
-					ui.Icon(c, ic).FontSize(12).TextColor(pal.TextFaint)
+					ui.Icon(c, ic).FontSize(sf(12)).TextColor(pal.TextFaint)
 				}
-				ui.Text(c, r.dir).FontSize(10.5).FontWeight(500).
+				ui.Text(c, r.dir).FontSize(sf(10.5)).FontWeight(500).
 					TextColor(pal.TextFaint).Grow(1).SingleLine()
-				ui.Textf(c, "%d 份", r.count).FontSize(10).
+				ui.Textf(c, "%d 份", r.count).FontSize(sf(10)).
 					TextColor(pal.TextFaint).SingleLine()
 			})
 		return
@@ -170,12 +170,12 @@ func (a *app) fileListRow(row ui.ListRow, rows []fileRow, pal *Palette) {
 	}
 	ur.Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(1).Justify(ui.Center).Children(func() {
-			ui.Text(c, f.Name).FontSize(11.5).TextColor(pal.Text).SingleLine()
+			ui.Text(c, f.Name).FontSize(sf(11.5)).TextColor(pal.Text).SingleLine()
 			metaText(c, f.Dir, pal)
 		})
-		ui.Text(c, formatFileSize(f.Size)).FontSize(10.5).
+		ui.Text(c, formatFileSize(f.Size)).FontSize(sf(10.5)).
 			TextColor(pal.TextMuted).Width(74).SingleLine()
-		ui.Text(c, formatModTime(f.ModTime)).FontSize(10.5).
+		ui.Text(c, formatModTime(f.ModTime)).FontSize(sf(10.5)).
 			TextColor(pal.TextMuted).Width(126).SingleLine()
 		ui.Row(c).Width(96).Gap(10).AlignItems(ui.Center).Children(func() {
 			if open := accentLink(c, fmt.Sprintf("fl-open:%d", row.Index), "打开", pal); open.Clicked() {

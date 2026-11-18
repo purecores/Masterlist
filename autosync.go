@@ -91,9 +91,10 @@ func (a *app) runAutoSync() {
 	a.autoSync.mu.Unlock()
 
 	paths := append([]string(nil), a.cfg.MasterlistPaths...)
+	excluded := append([]string(nil), a.cfg.ExcludedWorkbooks...)
 	exeDir := a.exeDir
 	go func() {
-		res, err := syncExcelMasterlist(context.Background(), store, exeDir, paths, false)
+		res, err := syncExcelMasterlist(context.Background(), store, exeDir, paths, excluded, false)
 		a.publish(func() {
 			a.autoSync.mu.Lock()
 			a.autoSync.last = time.Now()

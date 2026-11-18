@@ -11,6 +11,7 @@ import (
 )
 
 func (a *app) view(c *ui.Context) {
+	uiFontScale = clampFontScale(a.cfg.FontScale)
 	pal := a.theme()
 	c.SetTheme(setupTheme(c.Theme(), a.lightTheme))
 	if a.loading {
@@ -46,9 +47,9 @@ func (a *app) loadingView(c *ui.Context, pal *Palette) {
 		Padding(max(bar.Height-16, 16), 0, 0, 0).DragWindow().Children(func() {
 		ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
 			ui.Spinner(c)
-			ui.Text(c, "正在打开器件库").FontSize(16).FontWeight(600).TextColor(pal.Text)
+			ui.Text(c, "正在打开器件库").FontSize(sf(16)).FontWeight(600).TextColor(pal.Text)
 			ui.Text(c, "读取原表结构与器件记录").
-				FontSize(11.5).TextColor(pal.TextMuted)
+				FontSize(sf(11.5)).TextColor(pal.TextMuted)
 		})
 	})
 }
@@ -59,10 +60,10 @@ func (a *app) errorView(c *ui.Context, pal *Palette) {
 		Padding(max(bar.Height-16, 16), 0, 0, 0).DragWindow().Children(func() {
 		ui.Column(c).Grow(1).Center().Gap(10).Padding(40).Children(func() {
 			if ic := icon("circle-alert"); ic != nil {
-				ui.Icon(c, ic).FontSize(28).TextColor(pal.Danger)
+				ui.Icon(c, ic).FontSize(sf(28)).TextColor(pal.Danger)
 			}
-			ui.Text(c, "无法打开器件库").FontSize(17).FontWeight(600).TextColor(pal.Text)
-			ui.Text(c, a.loadErr).FontSize(12).TextColor(pal.TextMuted).
+			ui.Text(c, "无法打开器件库").FontSize(sf(17)).FontWeight(600).TextColor(pal.Text)
+			ui.Text(c, a.loadErr).FontSize(sf(12)).TextColor(pal.TextMuted).
 				MaxWidth(620).Wrap().TextAlign(ui.Center)
 			if a.dbPath != "" {
 				metaText(c, a.dbPath, pal)
@@ -91,7 +92,7 @@ func (a *app) sidebar(c *ui.Context, pal *Palette) {
 		ui.Row(c).Padding(2, 6, 6, 6).Margin(4, 0, 0, 0).AlignItems(ui.Center).Children(func() {
 			sectionLabel(c, "原表目录", pal)
 			ui.Spacer(c)
-			ui.Textf(c, "%d 份", len(a.books)).FontSize(10.5).TextColor(pal.TextFaint).SingleLine()
+			ui.Textf(c, "%d 份", len(a.books)).FontSize(sf(10.5)).TextColor(pal.TextFaint).SingleLine()
 		})
 
 		ui.Scroll(c).Grow(1).Gap(1).Children(func() {
@@ -111,12 +112,12 @@ func (a *app) sidebarHeader(c *ui.Context, pal *Palette) {
 			ui.Image(c, appIconSource).Size(30, 30).Radius(7)
 		} else {
 			ui.Box(c).Size(30, 30).Center().Radius(7).Background(pal.Accent).Children(func() {
-				ui.Text(c, "ML").FontSize(10).Bold().TextColor(pal.AccentText)
+				ui.Text(c, "ML").FontSize(sf(10)).Bold().TextColor(pal.AccentText)
 			})
 		}
 		ui.Column(c).Gap(1).Children(func() {
-			ui.Text(c, "电气柜元件库").FontSize(14).FontWeight(600).TextColor(pal.Text).SingleLine()
-			ui.Text(c, "器件与手册").FontSize(10).TextColor(pal.TextFaint).SingleLine()
+			ui.Text(c, "电气柜元件库").FontSize(sf(14)).FontWeight(600).TextColor(pal.Text).SingleLine()
+			ui.Text(c, "器件与手册").FontSize(sf(10)).TextColor(pal.TextFaint).SingleLine()
 		})
 	})
 }
@@ -149,12 +150,12 @@ func (a *app) navItem(c *ui.Context, pal *Palette, key string, selected bool, ic
 		}
 		if iconName != "" {
 			if ic := icon(iconName); ic != nil {
-				ui.Icon(c, ic).FontSize(14).TextColor(glyphColor)
+				ui.Icon(c, ic).FontSize(sf(14)).TextColor(glyphColor)
 			}
 		}
-		ui.Text(c, label).FontSize(12.5).FontWeight(500).
+		ui.Text(c, label).FontSize(sf(12.5)).FontWeight(500).
 			TextColor(textColor).Grow(1).SingleLine()
-		ui.Textf(c, "%s", formatInt(count)).FontSize(10.5).
+		ui.Textf(c, "%s", formatInt(count)).FontSize(sf(10.5)).
 			TextColor(countColor).SingleLine()
 	})
 	return b
@@ -193,9 +194,9 @@ func (a *app) sidebarFooter(c *ui.Context, pal *Palette) {
 		})
 		ui.Column(c).Padding(8, 8, 2, 8).Gap(2).Children(func() {
 			ui.Textf(c, "%d 份原表 · %d 个工作表", a.summary.Files, a.summary.Sheets).
-				FontSize(10).TextColor(pal.TextFaint).SingleLine()
+				FontSize(sf(10)).TextColor(pal.TextFaint).SingleLine()
 			ui.Text(c, "上次同步 "+valueOr(formatImportedAt(a.summary.ImportDate), "—")).
-				FontSize(10).TextColor(pal.TextFaint).SingleLine()
+				FontSize(sf(10)).TextColor(pal.TextFaint).SingleLine()
 		})
 	})
 }
@@ -232,9 +233,9 @@ func (a *app) pageHeader(c *ui.Context, pal *Palette) {
 		DragWindow().Children(func() {
 		ui.Column(c).Shrink(0).Gap(1).Justify(ui.Center).Children(func() {
 			title := a.scopeTitle()
-			ui.Text(c, title).FontSize(17).FontWeight(600).
+			ui.Text(c, title).FontSize(sf(17)).FontWeight(600).
 				TextColor(pal.Text).SingleLine().Shrink(0).Selectable()
-			ui.Text(c, a.scopeBreadcrumb()).FontSize(10.5).
+			ui.Text(c, a.scopeBreadcrumb()).FontSize(sf(10.5)).
 				TextColor(pal.TextFaint).SingleLine().Selectable()
 		})
 
@@ -337,7 +338,7 @@ func (a *app) scopeStrip(c *ui.Context, pal *Palette) {
 		Background(pal.AppBg).Children(func() {
 		if book != nil {
 			a.ensureSheetChoice(book)
-			ui.Text(c, "工作表").FontSize(11).FontWeight(500).
+			ui.Text(c, "工作表").FontSize(sf(11)).FontWeight(500).
 				TextColor(pal.TextFaint).Shrink(0)
 			prev := iconButton(c, "chevron-left", "上一个工作表", pal)
 			if prev.Clicked() {
@@ -351,7 +352,7 @@ func (a *app) scopeStrip(c *ui.Context, pal *Palette) {
 			if next.Clicked() {
 				a.stepSheet(1)
 			}
-			ui.Text(c, a.sheetSummary(book)).FontSize(11).TextColor(pal.TextFaint).SingleLine()
+			ui.Text(c, a.sheetSummary(book)).FontSize(sf(11)).TextColor(pal.TextFaint).SingleLine()
 		}
 		ui.Spacer(c)
 		a.activeFilterChipsRow(c, pal)
@@ -484,11 +485,11 @@ func (a *app) toolMenuButton(c *ui.Context, key, iconName, label string, active 
 			textColor = pal.Accent
 		}
 		if ic := icon(iconName); ic != nil {
-			ui.Icon(c, ic).FontSize(12).TextColor(color)
+			ui.Icon(c, ic).FontSize(sf(12)).TextColor(color)
 		}
-		ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(textColor).SingleLine()
+		ui.Text(c, label).FontSize(sf(11.5)).FontWeight(500).TextColor(textColor).SingleLine()
 		if ic := icon("chevron-down"); ic != nil {
-			ui.Icon(c, ic).FontSize(10).TextColor(pal.TextFaint)
+			ui.Icon(c, ic).FontSize(sf(10)).TextColor(pal.TextFaint)
 		}
 	})
 	return b
@@ -631,9 +632,9 @@ func (a *app) activeFilterChips(c *ui.Context, pal *Palette) {
 		b := ui.ButtonBase(c.Key("chip:"+key)).Height(22).Padding(0, 8).Gap(5).
 			Radius(11).Background(pal.AccentCyanBg).AlignItems(ui.Center).Label(label)
 		b.Children(func() {
-			ui.Text(c, label).FontSize(10.5).FontWeight(500).TextColor(pal.Accent).SingleLine()
+			ui.Text(c, label).FontSize(sf(10.5)).FontWeight(500).TextColor(pal.Accent).SingleLine()
 			if ic := icon("x"); ic != nil {
-				ui.Icon(c, ic).FontSize(9).TextColor(pal.Accent)
+				ui.Icon(c, ic).FontSize(sf(9)).TextColor(pal.Accent)
 			}
 		})
 		if b.Clicked() {
@@ -736,7 +737,7 @@ func (a *app) tableHeader(c *ui.Context, pal *Palette) ui.Element {
 				a.sortColumnHeader(c, col, pal)
 				continue
 			}
-			t := ui.Text(c, col.label).FontSize(10.5).FontWeight(500).
+			t := ui.Text(c, col.label).FontSize(sf(10.5)).FontWeight(500).
 				TextColor(pal.TextFaint).SingleLine()
 			if col.width == 0 {
 				t.Grow(1)
@@ -779,7 +780,7 @@ func (a *app) sortColumnHeader(c *ui.Context, col tableColumn, pal *Palette) {
 			textColor = pal.Accent
 		}
 		h.Children(func() {
-			ui.Text(c, col.label).FontSize(10.5).FontWeight(500).
+			ui.Text(c, col.label).FontSize(sf(10.5)).FontWeight(500).
 				TextColor(textColor).SingleLine()
 			if active {
 				iconName := "arrow-up"
@@ -787,7 +788,7 @@ func (a *app) sortColumnHeader(c *ui.Context, col tableColumn, pal *Palette) {
 					iconName = "arrow-down"
 				}
 				if ic := icon(iconName); ic != nil {
-					ui.Icon(c, ic).FontSize(9).TextColor(textColor).Margin(3, 0, 0, 0)
+					ui.Icon(c, ic).FontSize(sf(9)).TextColor(textColor).Margin(3, 0, 0, 0)
 				}
 			}
 		})
@@ -850,7 +851,7 @@ func (a *app) resultRow(row ui.ListRow, pal *Palette) {
 		if bhs == "" {
 			bhs = "未编号"
 		}
-		ui.Text(c, bhs).Font("monospace").FontSize(11.5).FontWeight(600).
+		ui.Text(c, bhs).Font("monospace").FontSize(sf(11.5)).FontWeight(600).
 			TextColor(pal.AccentCyan).Width(98).SingleLine()
 
 		nameColor := pal.Text
@@ -858,36 +859,36 @@ func (a *app) resultRow(row ui.ListRow, pal *Palette) {
 			nameColor = pal.Text
 		}
 		ui.Row(c).Grow(1).MinWidth(120).Gap(6).AlignItems(ui.Center).Clip().Children(func() {
-			ui.Text(c, p.Name()).FontSize(12.5).FontWeight(500).
+			ui.Text(c, p.Name()).FontSize(sf(12.5)).FontWeight(500).
 				TextColor(nameColor).Shrink(1).SingleLine()
 			if p.Discontinued {
-				ui.Text(c, "弃用").FontSize(9.5).FontWeight(600).
+				ui.Text(c, "弃用").FontSize(sf(9.5)).FontWeight(600).
 					TextColor(pal.WarningText).Shrink(0).SingleLine()
 			}
 		})
 
-		ui.Text(c, valueOr(p.Spec, "—")).FontSize(11.5).
+		ui.Text(c, valueOr(p.Spec, "—")).FontSize(sf(11.5)).
 			TextColor(pal.TextMuted).Width(122).SingleLine()
 
-		ui.Text(c, valueOr(p.Manufacturer, "—")).FontSize(11.5).
+		ui.Text(c, valueOr(p.Manufacturer, "—")).FontSize(sf(11.5)).
 			TextColor(pal.TextMuted).Width(82).SingleLine()
 
-		ui.Text(c, p.SourceLabel()).FontSize(10.5).
+		ui.Text(c, p.SourceLabel()).FontSize(sf(10.5)).
 			TextColor(pal.TextFaint).Width(92).SingleLine()
 
 		ui.Row(c).Width(48).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			pdfs := a.pdfScanner.FindForBHS(p.BHSNo)
 			if len(pdfs) == 0 {
-				ui.Text(c, "—").FontSize(10.5).TextColor(pal.TextFaint)
+				ui.Text(c, "—").FontSize(sf(10.5)).TextColor(pal.TextFaint)
 				return
 			}
 			b := ui.ButtonBase(c.Key(fmt.Sprintf("pdf-count:%d", p.ID))).Height(22).
 				Padding(0, 6).Radius(5).AlignItems(ui.Center).Label("查看数据手册")
 			b.Children(func() {
 				if ic := icon("file-down"); ic != nil {
-					ui.Icon(c, ic).FontSize(11).TextColor(pal.Accent)
+					ui.Icon(c, ic).FontSize(sf(11)).TextColor(pal.Accent)
 				}
-				ui.Textf(c, "%d", len(pdfs)).FontSize(10.5).FontWeight(600).
+				ui.Textf(c, "%d", len(pdfs)).FontSize(sf(10.5)).FontWeight(600).
 					TextColor(pal.Accent)
 			})
 			if b.Hovered() {
@@ -978,7 +979,7 @@ func (a *app) detailPanel(c *ui.Context, pal *Palette) {
 				}
 				ui.Column(c).Gap(3).Padding(0, 0, 8, 0).Children(func() {
 					ui.Textf(c, "记录 #%d · 更新于 %s", p.ID, valueOr(formatImportedAt(p.UpdatedAt), "—")).
-						FontSize(10).TextColor(pal.TextFaint).Wrap()
+						FontSize(sf(10)).TextColor(pal.TextFaint).Wrap()
 				})
 			})
 		})
@@ -998,7 +999,7 @@ func copyOnDouble(c *ui.Context, value string, el ui.Element, toast func(string)
 // and pasting it is the common move in a parts library, so it takes one
 // gesture instead of two.
 func (a *app) copyableText(c *ui.Context, value string, size float32, color ui.Color, toast func(string)) {
-	t := ui.Text(c, value).FontSize(size).TextColor(color).Grow(1).Wrap().Selectable()
+	t := ui.Text(c, value).FontSize(sf(size)).TextColor(color).Grow(1).Wrap().Selectable()
 	if t.DoubleClicked() {
 		c.Services().WriteClipboard(value)
 		toast("已复制：" + value)
@@ -1036,7 +1037,7 @@ func (a *app) alternateLinks(c *ui.Context, p *Part, pal *Palette) {
 				}
 				link := l
 				ui.Row(c).AlignItems(ui.Start).Gap(10).Padding(4, 0).Children(func() {
-					ui.Text(c, link.label).FontSize(10.5).TextColor(pal.TextFaint).
+					ui.Text(c, link.label).FontSize(sf(10.5)).TextColor(pal.TextFaint).
 						Width(96).Shrink(0)
 					// Split on separators so several numbers each act as a
 					// link, and any text stays readable.
@@ -1059,7 +1060,7 @@ func (a *app) partLink(c *ui.Context, number string, pal *Palette) {
 		return
 	}
 	if strings.TrimSpace(number) == "" || !looksLikePartNumber(number) {
-		ui.Text(c, number).FontSize(11.5).TextColor(pal.Text).Wrap().Selectable()
+		ui.Text(c, number).FontSize(sf(11.5)).TextColor(pal.Text).Wrap().Selectable()
 		return
 	}
 	key := "part-link:" + number
@@ -1080,7 +1081,7 @@ func (a *app) detailPlaceholder(c *ui.Context, pal *Palette) {
 		BorderWidth(0, 0, 0, 1).BorderColor(pal.Border).
 		Children(func() {
 			ui.Row(c).Padding(14, 18).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "器件详情").FontSize(12).FontWeight(600).TextColor(pal.TextMuted)
+				ui.Text(c, "器件详情").FontSize(sf(12)).FontWeight(600).TextColor(pal.TextMuted)
 				ui.Spacer(c)
 				if closeBtn := iconButton(c, "x", "隐藏详情栏", pal); closeBtn.Clicked() {
 					a.inspectorOpen = false
@@ -1090,11 +1091,11 @@ func (a *app) detailPlaceholder(c *ui.Context, pal *Palette) {
 			})
 			ui.Column(c).Grow(1).Center().Gap(8).Padding(24).Children(func() {
 				if ic := icon("info"); ic != nil {
-					ui.Icon(c, ic).FontSize(22).TextColor(pal.TextFaint)
+					ui.Icon(c, ic).FontSize(sf(22)).TextColor(pal.TextFaint)
 				}
-				ui.Text(c, "选择一个器件").FontSize(12.5).FontWeight(500).TextColor(pal.TextMuted)
+				ui.Text(c, "选择一个器件").FontSize(sf(12.5)).FontWeight(500).TextColor(pal.TextMuted)
 				ui.Text(c, "点击列表中的任意一行，规格、来源与手册会显示在这里。").
-					FontSize(11).TextColor(pal.TextFaint).TextAlign(ui.Center).Wrap()
+					FontSize(sf(11)).TextColor(pal.TextFaint).TextAlign(ui.Center).Wrap()
 			})
 		})
 }
@@ -1113,13 +1114,13 @@ func (a *app) detailHeader(c *ui.Context, p *Part, pal *Palette) {
 			}
 		})
 		ui.Column(c).Gap(2).Selectable().Children(func() {
-			bhsText := ui.Text(c, valueOr(p.BHSNo, "未编号")).FontSize(19).FontWeight(600).
+			bhsText := ui.Text(c, valueOr(p.BHSNo, "未编号")).FontSize(sf(19)).FontWeight(600).
 				Font("monospace").LetterSpacing(-0.3).TextColor(pal.Text).SingleLine().Selectable()
 			copyOnDouble(c, p.BHSNo, bhsText, c.Toast)
-			nameText := ui.Text(c, p.Name()).FontSize(13).FontWeight(500).TextColor(pal.Text).Wrap().Selectable()
+			nameText := ui.Text(c, p.Name()).FontSize(sf(13)).FontWeight(500).TextColor(pal.Text).Wrap().Selectable()
 			copyOnDouble(c, p.Name(), nameText, c.Toast)
 			if p.SecondaryName() != "" {
-				ui.Text(c, p.SecondaryName()).FontSize(11).TextColor(pal.TextFaint).Wrap()
+				ui.Text(c, p.SecondaryName()).FontSize(sf(11)).TextColor(pal.TextFaint).Wrap()
 			}
 			line := p.Spec
 			if p.Manufacturer != "" {
@@ -1129,7 +1130,7 @@ func (a *app) detailHeader(c *ui.Context, p *Part, pal *Palette) {
 				line += p.Manufacturer
 			}
 			if line != "" {
-				ui.Text(c, line).FontSize(11).TextColor(pal.TextMuted).SingleLine()
+				ui.Text(c, line).FontSize(sf(11)).TextColor(pal.TextMuted).SingleLine()
 			}
 		})
 		ui.Row(c).Gap(8).Margin(2, 0, 0, 0).Children(func() {
@@ -1139,7 +1140,7 @@ func (a *app) detailHeader(c *ui.Context, p *Part, pal *Palette) {
 				edit.Background(pal.AccentHover)
 			}
 			edit.Children(func() {
-				ui.Text(c, "修改器件").FontSize(11.5).FontWeight(600).TextColor(pal.AccentText)
+				ui.Text(c, "修改器件").FontSize(sf(11.5)).FontWeight(600).TextColor(pal.AccentText)
 			})
 			if edit.Clicked() {
 				a.openEdit()
@@ -1159,7 +1160,7 @@ func (a *app) sourceCard(c *ui.Context, p *Part, pal *Palette) {
 	if p.SourceFile == "" {
 		ui.Column(c).Gap(4).Children(func() {
 			sectionLabel(c, "来源", pal)
-			ui.Text(c, "手动维护记录（未关联原表）").FontSize(11).TextColor(pal.TextMuted).Wrap()
+			ui.Text(c, "手动维护记录（未关联原表）").FontSize(sf(11)).TextColor(pal.TextMuted).Wrap()
 		})
 		return
 	}
@@ -1167,7 +1168,7 @@ func (a *app) sourceCard(c *ui.Context, p *Part, pal *Palette) {
 	ui.Column(c).Gap(6).Children(func() {
 		sectionLabel(c, "来源", pal)
 		ui.Column(c).Gap(3).Selectable().Children(func() {
-			fileText := ui.Text(c, p.SourceFile).FontSize(11.5).FontWeight(500).TextColor(pal.Text).Wrap().Selectable()
+			fileText := ui.Text(c, p.SourceFile).FontSize(sf(11.5)).FontWeight(500).TextColor(pal.Text).Wrap().Selectable()
 			copyOnDouble(c, p.SourceFile, fileText, c.Toast)
 			sheetLabel := p.SourceSheet
 			if sheetLabel == "" {
@@ -1229,7 +1230,7 @@ func (a *app) detailSection(c *ui.Context, title string, fields [][2]string, pal
 					continue
 				}
 				ui.Row(c).AlignItems(ui.Start).Gap(10).Padding(4, 0).Children(func() {
-					ui.Text(c, field[0]).FontSize(10.5).TextColor(pal.TextFaint).
+					ui.Text(c, field[0]).FontSize(sf(10.5)).TextColor(pal.TextFaint).
 						Width(96).Shrink(0)
 					a.copyableText(c, field[1], 11.5, pal.Text, c.Toast)
 				})
@@ -1243,25 +1244,25 @@ func (a *app) statusBar(c *ui.Context, pal *Palette) {
 		BorderWidth(1, 0, 0, 0).BorderColor(pal.BorderSubtle).
 		Background(pal.StatusBarBg).Children(func() {
 		ui.Box(c).Size(6, 6).Radius(3).Background(pal.Success)
-		ui.Text(c, "已连接数据库").FontSize(10.5).TextColor(pal.TextMuted).SingleLine()
+		ui.Text(c, "已连接数据库").FontSize(sf(10.5)).TextColor(pal.TextMuted).SingleLine()
 		ui.Text(c, "共 "+formatInt(a.summary.Total)+" 件器件").
-			FontSize(10.5).TextColor(pal.TextFaint).SingleLine()
+			FontSize(sf(10.5)).TextColor(pal.TextFaint).SingleLine()
 		if n := a.pdfScanner.Count(); n > 0 {
 			ui.Textf(c, "手册库 %s 份", formatInt(n)).
-				FontSize(10.5).TextColor(pal.TextFaint).SingleLine()
+				FontSize(sf(10.5)).TextColor(pal.TextFaint).SingleLine()
 		}
 		if a.filterActive() {
 			ui.Textf(c, "当前筛选显示 %s 件", formatInt(len(a.results))).
-				FontSize(10.5).TextColor(pal.Accent).SingleLine()
+				FontSize(sf(10.5)).TextColor(pal.Accent).SingleLine()
 		}
 		ui.Spacer(c)
 		ui.Text(c, "Ctrl+F 搜索 · 双击行修改").
-			FontSize(10).TextColor(pal.TextFaint).SingleLine().Selectable()
+			FontSize(sf(10)).TextColor(pal.TextFaint).SingleLine().Selectable()
 	})
 }
 
 func (a *app) form(c *ui.Context, pal *Palette) {
-	ui.Column(c).Width(660).Padding(20, 24).Gap(14).Radius(10).
+	ui.Column(c).Width(660).Padding(20, 24).Gap(14).Radius(10).Selectable().
 		Background(pal.MainBg).Border(1, pal.BorderStrong).
 		Shadow(0, 24, 64, 0, ui.RGBA(0, 0, 0, 0.35)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
@@ -1270,8 +1271,8 @@ func (a *app) form(c *ui.Context, pal *Palette) {
 				if a.editing {
 					title = "修改器件"
 				}
-				ui.Text(c, title).FontSize(17).FontWeight(600).TextColor(pal.Text)
-				ui.Text(c, "填写参数并保存到本地器件库。").FontSize(11.5).TextColor(pal.TextMuted).Selectable()
+				ui.Text(c, title).FontSize(sf(17)).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "填写参数并保存到本地器件库。").FontSize(sf(11.5)).TextColor(pal.TextMuted).Selectable()
 			})
 			closeBtn := iconButton(c, "x", "关闭", pal)
 			if closeBtn.Clicked() {
@@ -1323,10 +1324,10 @@ func (a *app) form(c *ui.Context, pal *Palette) {
 		})
 		if dupes := a.duplicateDraftCount(); dupes > 0 {
 			ui.Textf(c, "另有 %d 条相同零件号的记录；保存后它们都会保留。", dupes).
-				FontSize(10.5).TextColor(pal.WarningText)
+				FontSize(sf(10.5)).TextColor(pal.WarningText)
 		}
 		if a.formError != "" {
-			ui.Text(c, a.formError).FontSize(11).TextColor(pal.DangerText).
+			ui.Text(c, a.formError).FontSize(sf(11)).TextColor(pal.DangerText).
 				Padding(5, 8).Radius(4).Background(pal.Danger.Alpha(0.12))
 		}
 		ui.Row(c).Justify(ui.End).Gap(8).Margin(8, 0, 0, 0).Children(func() {
@@ -1401,12 +1402,12 @@ func (a *app) datasheetCard(c *ui.Context, p *Part, pal *Palette) {
 		ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 			sectionLabel(c, "数据手册", pal)
 			if len(matchedPDFs) > 0 {
-				ui.Textf(c, "%d 份", len(matchedPDFs)).FontSize(10).
+				ui.Textf(c, "%d 份", len(matchedPDFs)).FontSize(sf(10)).
 					FontWeight(600).TextColor(pal.Accent)
 			}
 			ui.Spacer(c)
 			if a.pdfScanner.Scanning() {
-				ui.Text(c, "同步中…").FontSize(10).TextColor(pal.TextFaint)
+				ui.Text(c, "同步中…").FontSize(sf(10)).TextColor(pal.TextFaint)
 			}
 			if listBtn := accentLink(c, "btn:pdf-filelist", "文件列表", pal); listBtn.Clicked() {
 				a.openFileList()
@@ -1416,7 +1417,7 @@ func (a *app) datasheetCard(c *ui.Context, p *Part, pal *Palette) {
 		if len(matchedPDFs) == 0 {
 			ui.Column(c).Gap(6).Padding(10, 12).Radius(7).Background(pal.Surface).
 				Border(1, pal.BorderSubtle).Children(func() {
-				ui.Text(c, "没有匹配到 PDF 手册").FontSize(11.5).TextColor(pal.TextMuted)
+				ui.Text(c, "没有匹配到 PDF 手册").FontSize(sf(11.5)).TextColor(pal.TextMuted)
 				metaText(c, "匹配文件名中的零件号：'"+valueOr(p.BHSNo, "-")+"'", pal)
 				ui.Row(c).Gap(10).Margin(2, 0, 0, 0).Children(func() {
 					if cfg := accentLink(c, "btn:cfg-pdf-inline", "配置手册目录", pal); cfg.Clicked() {
@@ -1437,7 +1438,7 @@ func (a *app) datasheetCard(c *ui.Context, p *Part, pal *Palette) {
 		})
 		if hiddenDuplicates > 0 {
 			ui.Textf(c, "另有 %d 份同名同大小的文件按重复处理，未显示。", hiddenDuplicates).
-				FontSize(10).TextColor(pal.TextFaint).Wrap()
+				FontSize(sf(10)).TextColor(pal.TextFaint).Wrap()
 		}
 	})
 }
@@ -1451,7 +1452,7 @@ func (a *app) datasheetRow(c *ui.Context, p *Part, i int, pdf PDFFile, pal *Pale
 			ui.Divider(c).Background(pal.BorderSubtle)
 		}
 		ui.Column(c).Padding(7, 0).Gap(4).Selectable().Children(func() {
-			nameText := ui.Text(c, pdf.Name).FontSize(11).FontWeight(500).
+			nameText := ui.Text(c, pdf.Name).FontSize(sf(11)).FontWeight(500).
 				TextColor(pal.Text).Wrap().Selectable()
 			copyOnDouble(c, pdf.Name, nameText, c.Toast)
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
@@ -1474,9 +1475,9 @@ func (a *app) settingsModal(c *ui.Context, pal *Palette) {
 		Shadow(0, 24, 64, 0, ui.RGBA(0, 0, 0, 0.35)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Gap(2).Grow(1).Children(func() {
-				ui.Text(c, "设置").FontSize(17).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "设置").FontSize(sf(17)).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "手册与原始表格的存放位置、状态栏和 PDF 打开方式。").
-					FontSize(11.5).TextColor(pal.TextMuted).Selectable()
+					FontSize(sf(11.5)).TextColor(pal.TextMuted).Selectable()
 			})
 			closeBtn := iconButton(c, "x", "关闭", pal)
 			if closeBtn.Clicked() {
@@ -1504,7 +1505,7 @@ func (a *app) settingsModal(c *ui.Context, pal *Palette) {
 		})
 
 		if a.datasheetStatusMsg != "" {
-			ui.Text(c, a.datasheetStatusMsg).FontSize(11).TextColor(pal.DangerText).
+			ui.Text(c, a.datasheetStatusMsg).FontSize(sf(11)).TextColor(pal.DangerText).
 				Padding(5, 8).Radius(4).Background(pal.Danger.Alpha(0.12))
 		}
 
@@ -1531,21 +1532,21 @@ func (a *app) settingsDatasheetTab(c *ui.Context, pal *Palette) {
 		ui.TextArea(c, &a.datasheetPathsText).Lines(4, 5)
 	})
 	ui.Text(c, `可填写本地文件夹、映射网络盘（Z:\手册）或 UNC 路径（\\server\share\pdf）。网络盘不可达时沿用上次索引。`).
-		FontSize(10.5).TextColor(pal.TextFaint).Wrap()
+		FontSize(sf(10.5)).TextColor(pal.TextFaint).Wrap()
 
 	ui.Column(c).Gap(6).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			sectionLabel(c, "扫描状态", pal)
 			ui.Spacer(c)
 			if a.pdfScanner.Scanning() {
-				ui.Text(c, "正在扫描…").FontSize(10).TextColor(pal.Accent)
+				ui.Text(c, "正在扫描…").FontSize(sf(10)).TextColor(pal.Accent)
 			}
 		})
 		ui.Column(c).Children(func() {
 			statuses := a.pdfScanner.Status()
 			if len(statuses) == 0 {
 				ui.Row(c).Padding(8, 10).Children(func() {
-					ui.Text(c, "暂无已配置路径").FontSize(11).TextColor(pal.TextMuted)
+					ui.Text(c, "暂无已配置路径").FontSize(sf(11)).TextColor(pal.TextMuted)
 				})
 			}
 			for _, st := range statuses {
@@ -1557,7 +1558,7 @@ func (a *app) settingsDatasheetTab(c *ui.Context, pal *Palette) {
 						ui.Box(c).Size(6, 6).Radius(3).Background(pal.Danger).Margin(2, 0, 0, 0)
 					}
 					ui.Column(c).Grow(1).Gap(2).Children(func() {
-						ui.Text(c, stCopy.ConfiguredPath).FontSize(11.5).FontWeight(500).
+						ui.Text(c, stCopy.ConfiguredPath).FontSize(sf(11.5)).FontWeight(500).
 							TextColor(pal.Text).SingleLine()
 						statusDesc := fmt.Sprintf("%s · 含子文件夹 %s 份 PDF", stCopy.ResolvedPath, formatInt(stCopy.Count))
 						if !stCopy.Exists {
@@ -1565,7 +1566,7 @@ func (a *app) settingsDatasheetTab(c *ui.Context, pal *Palette) {
 						}
 						metaText(c, statusDesc, pal)
 						if stCopy.Error != "" {
-							ui.Text(c, stCopy.Error).FontSize(10).
+							ui.Text(c, stCopy.Error).FontSize(sf(10)).
 								TextColor(pal.WarningText).Wrap()
 						}
 					})
@@ -1576,10 +1577,10 @@ func (a *app) settingsDatasheetTab(c *ui.Context, pal *Palette) {
 
 	ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
 		ui.Textf(c, "共索引 %s 份 PDF", formatInt(a.pdfScanner.Count())).
-			FontSize(11.5).FontWeight(500).TextColor(pal.Text).SingleLine()
+			FontSize(sf(11.5)).FontWeight(500).TextColor(pal.Text).SingleLine()
 		ui.Spacer(c)
 		if a.pdfScanner.FromCache() {
-			ui.Text(c, "来自本地缓存").FontSize(10).TextColor(pal.TextFaint).SingleLine()
+			ui.Text(c, "来自本地缓存").FontSize(sf(10)).TextColor(pal.TextFaint).SingleLine()
 		}
 		if at := a.pdfScanner.ScannedAt(); !at.IsZero() {
 			metaText(c, at.Format("2006.01.02 15:04"), pal)
@@ -1592,8 +1593,14 @@ func (a *app) settingsExcelTab(c *ui.Context, pal *Palette) {
 		ui.TextArea(c, &a.masterlistPathsText).Lines(4, 5)
 	})
 
+	ui.Field(c, "排除的原表（每行一个文件名或完整路径，也可填目录排除其下全部原表）", func() {
+		ui.TextArea(c, &a.excelExcludeText).Lines(3, 4)
+	})
+	ui.Text(c, "排除项不参与导入，也不会下载到本地副本。").
+		FontSize(sf(10.5)).TextColor(pal.TextFaint).Wrap()
+
 	ui.Column(c).Gap(6).Children(func() {
-		ui.Text(c, "当前原表路径检测与 Excel 文件数:").FontSize(10.5).FontWeight(700).
+		ui.Text(c, "当前原表路径检测与 Excel 文件数:").FontSize(sf(10.5)).FontWeight(700).
 			LetterSpacing(0.8).TextColor(pal.TextFaint)
 		ui.Column(c).Border(1, pal.Border).Radius(6).Background(pal.Surface).
 			Dividers(1, pal.BorderSubtle).Children(func() {
@@ -1601,7 +1608,7 @@ func (a *app) settingsExcelTab(c *ui.Context, pal *Palette) {
 			statuses := checkExcelDirStatuses(a.exeDir, lines)
 			if len(statuses) == 0 {
 				ui.Row(c).Padding(8, 10).Children(func() {
-					ui.Text(c, "暂无已配置路径").FontSize(11).TextColor(pal.TextMuted)
+					ui.Text(c, "暂无已配置路径").FontSize(sf(11)).TextColor(pal.TextMuted)
 				})
 			}
 			for _, st := range statuses {
@@ -1613,13 +1620,13 @@ func (a *app) settingsExcelTab(c *ui.Context, pal *Palette) {
 						ui.Box(c).Size(6, 6).Radius(3).Background(pal.Danger)
 					}
 					ui.Column(c).Grow(1).Gap(1).Children(func() {
-						ui.Text(c, stCopy.ConfiguredPath).FontSize(11.5).FontWeight(600).
+						ui.Text(c, stCopy.ConfiguredPath).FontSize(sf(11.5)).FontWeight(600).
 							TextColor(pal.Text).SingleLine()
 						statusDesc := fmt.Sprintf("-> %s (已检索到 %d 份 Excel 表格)", stCopy.ResolvedPath, stCopy.FileCount)
 						if !stCopy.Exists {
 							statusDesc = fmt.Sprintf("-> %s (目录不存在)", stCopy.ResolvedPath)
 						}
-						ui.Text(c, statusDesc).FontSize(10.5).TextColor(pal.TextMuted).SingleLine()
+						ui.Text(c, statusDesc).FontSize(sf(10.5)).TextColor(pal.TextMuted).SingleLine()
 					})
 				})
 			}
@@ -1632,9 +1639,9 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 	ui.Column(c).Background(pal.Surface).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "外观").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "外观").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "跟随系统时随 Windows 的浅色/深色设置变化，也可以固定为浅色或深色。").
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
 			})
 			appearance := 0
 			switch a.cfg.Theme {
@@ -1659,9 +1666,29 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "详情栏常驻").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "文字大小").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
+				ui.Textf(c, "当前 %d%%；拖动滑块或点 − / + 调整，新的字号立即生效。",
+					int(clampFontScale(a.cfg.FontScale)*100)).
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
+			})
+			scale := float64(clampFontScale(a.cfg.FontScale))
+			ui.Row(c).Width(200).Shrink(0).Gap(6).AlignItems(ui.Center).Children(func() {
+				if ui.Button(c, "−").Height(26).Width(28).Clicked() {
+					a.nudgeFontScale(-0.05)
+				}
+				if slider := ui.Slider(c, &scale, 0.8, 1.5).Label("文字大小").Grow(1); slider.Changed() {
+					a.setFontScale(scale)
+				}
+				if ui.Button(c, "+").Height(26).Width(28).Clicked() {
+					a.nudgeFontScale(0.05)
+				}
+			})
+		})
+		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
+			ui.Column(c).Grow(1).Gap(2).Children(func() {
+				ui.Text(c, "详情栏常驻").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "没有选中器件时也保留右侧详情栏，列表宽度保持不变。").
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
 			})
 			on := a.cfg.DetailPinned
 			if ui.Switch(c, &on).Label("详情栏常驻").Changed() {
@@ -1676,9 +1703,9 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 	ui.Column(c).Background(pal.Surface).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "常驻状态栏").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "常驻状态栏").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "在 Windows 通知区域显示程序图标，并可从那里唤起窗口。").
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
 			})
 			on := a.cfg.TrayEnabled
 			if ui.Switch(c, &on).Label("常驻状态栏").Changed() {
@@ -1695,9 +1722,9 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "关闭窗口时隐藏到状态栏").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "关闭窗口时隐藏到状态栏").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "关闭窗口不退出程序，改从状态栏图标恢复；退出请用图标菜单的“退出”。").
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
 			})
 			on := a.cfg.CloseToTray
 			sw := ui.Switch(c, &on).Label("关闭窗口时隐藏到状态栏")
@@ -1710,10 +1737,10 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 			}
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 2, 9, 2).Children(func() {
-			ui.Text(c, a.trayStatusLine()).FontSize(10.5).TextColor(pal.TextFaint).SingleLine()
+			ui.Text(c, a.trayStatusLine()).FontSize(sf(10.5)).TextColor(pal.TextFaint).SingleLine()
 			ui.Spacer(c)
 			if a.trayReady {
-				ui.Text(c, "图标已创建").FontSize(10).TextColor(pal.SuccessText)
+				ui.Text(c, "图标已创建").FontSize(sf(10)).TextColor(pal.SuccessText)
 			}
 		})
 	})
@@ -1722,9 +1749,9 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 	ui.Column(c).Background(pal.Surface).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "使用密码打开原表").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "使用密码打开原表").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "原表设置了编辑密码时，用已保存的密码通过 Excel 打开本地副本，不再弹密码框。").
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
 			})
 			on := a.cfg.OpenExcelPassword
 			if ui.Switch(c, &on).Label("使用密码打开原表").Changed() {
@@ -1742,10 +1769,10 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "自动同步原表").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "自动同步原表").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
 				ui.Textf(c, "每 %d 分钟把原表的最新版本下载到本地副本并导入；0 表示只在手动同步时进行。原表本身不会被修改。",
 					a.cfg.AutoSyncMinutes).
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
 			})
 			minutes := float64(a.cfg.AutoSyncMinutes)
 			ui.Row(c).Width(140).Shrink(0).Children(func() {
@@ -1760,7 +1787,7 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 2, 9, 2).Children(func() {
 			ui.Textf(c, "本地副本目录：%s", localWorkbookDir(a.exeDir)).
-				FontSize(10).TextColor(pal.TextFaint).SingleLine().Selectable()
+				FontSize(sf(10)).TextColor(pal.TextFaint).SingleLine().Selectable()
 			ui.Spacer(c)
 			if ui.Button(c, "打开副本目录").Height(26).Clicked() {
 				_ = shellOpenPath(localWorkbookDir(a.exeDir))
@@ -1772,9 +1799,9 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 	ui.Column(c).Background(pal.Surface).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "以只读方式打开 PDF").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "以只读方式打开 PDF").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "打开数据手册时使用只读副本，避免在手册上误编辑或保存，也不会占用网络盘上的原文件。").
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
 			})
 			on := a.cfg.ReadOnlyPDF
 			if ui.Switch(c, &on).Label("以只读方式打开 PDF").Changed() {
@@ -1791,10 +1818,10 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(10).Padding(9, 2).Children(func() {
 			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, "索引过期时间").FontSize(12).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "索引过期时间").FontSize(sf(12)).FontWeight(600).TextColor(pal.Text)
 				ui.Textf(c, "当前 %d 分钟；索引保存在 data\\pdf-index.json，下次启动秒开。",
 					a.cfg.PDFIndexMaxAgeMinutes).
-					FontSize(10.5).TextColor(pal.TextMuted).Wrap()
+					FontSize(sf(10.5)).TextColor(pal.TextMuted).Wrap()
 			})
 			minutes := float64(a.cfg.PDFIndexMaxAgeMinutes)
 			ui.Row(c).Width(140).Shrink(0).Children(func() {
@@ -1807,7 +1834,7 @@ func (a *app) settingsGeneralTab(c *ui.Context, pal *Palette) {
 			})
 		})
 		ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(4, 2, 9, 2).Children(func() {
-			ui.Text(c, a.fileLibraryMeta()).FontSize(10.5).TextColor(pal.TextMuted).SingleLine()
+			ui.Text(c, a.fileLibraryMeta()).FontSize(sf(10.5)).TextColor(pal.TextMuted).SingleLine()
 			ui.Spacer(c)
 			if ui.Button(c, "重建索引").Height(26).Clicked() {
 				a.scanDatasheetsAsync(true)
@@ -1840,7 +1867,7 @@ func (a *app) browseReader() {
 }
 
 func (a *app) syncModal(c *ui.Context, pal *Palette) {
-	ui.Column(c).Width(580).Padding(20, 24).Gap(14).Radius(10).
+	ui.Column(c).Width(580).Padding(20, 24).Gap(14).Radius(10).Selectable().
 		Background(pal.MainBg).Border(1, pal.BorderStrong).
 		Shadow(0, 24, 64, 0, ui.RGBA(0, 0, 0, 0.35)).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
@@ -1849,9 +1876,9 @@ func (a *app) syncModal(c *ui.Context, pal *Palette) {
 				if a.syncDryRun {
 					title = "预览同步结果"
 				}
-				ui.Text(c, title).FontSize(17).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, title).FontSize(sf(17)).FontWeight(600).TextColor(pal.Text)
 				ui.Text(c, "只读取原表，增量更新器件库；手工维护的记录不会被覆盖。").
-					FontSize(11.5).TextColor(pal.TextMuted).Selectable()
+					FontSize(sf(11.5)).TextColor(pal.TextMuted).Selectable()
 			})
 			closeBtn := iconButton(c, "x", "关闭", pal)
 			if closeBtn.Clicked() {
@@ -1863,19 +1890,19 @@ func (a *app) syncModal(c *ui.Context, pal *Palette) {
 		if a.syncRunning {
 			ui.Column(c).Center().Gap(10).Padding(30).Children(func() {
 				ui.Spinner(c)
-				ui.Text(c, "正在读取原表并比对器件库").FontSize(13.5).FontWeight(600).TextColor(pal.Text)
-				ui.Text(c, "识别每个工作表的表头与零件号").FontSize(11).TextColor(pal.TextMuted)
+				ui.Text(c, "正在读取原表并比对器件库").FontSize(sf(13.5)).FontWeight(600).TextColor(pal.Text)
+				ui.Text(c, "识别每个工作表的表头与零件号").FontSize(sf(11)).TextColor(pal.TextMuted)
 			})
 		} else if a.syncErr != "" {
 			ui.Column(c).Padding(12).Gap(6).Radius(6).Background(pal.Danger.Alpha(0.10)).
 				Border(1, pal.Danger.Alpha(0.3)).Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					if ic := icon("circle-alert"); ic != nil {
-						ui.Icon(c, ic).FontSize(16).TextColor(pal.Danger)
+						ui.Icon(c, ic).FontSize(sf(16)).TextColor(pal.Danger)
 					}
-					ui.Text(c, "同步过程中出现错误").FontSize(13).Bold().TextColor(pal.DangerText)
+					ui.Text(c, "同步过程中出现错误").FontSize(sf(13)).Bold().TextColor(pal.DangerText)
 				})
-				ui.Text(c, a.syncErr).FontSize(11.5).TextColor(pal.Text).Wrap()
+				ui.Text(c, a.syncErr).FontSize(sf(11.5)).TextColor(pal.Text).Wrap()
 			})
 		} else if a.syncResult != nil {
 			res := a.syncResult
@@ -1884,9 +1911,9 @@ func (a *app) syncModal(c *ui.Context, pal *Palette) {
 					Border(1, pal.BorderSubtle).Children(func() {
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 						if ic := icon("circle-check"); ic != nil {
-							ui.Icon(c, ic).FontSize(16).TextColor(pal.Success)
+							ui.Icon(c, ic).FontSize(sf(16)).TextColor(pal.Success)
 						}
-						ui.Text(c, res.SummaryMessage).FontSize(12.5).FontWeight(600).
+						ui.Text(c, res.SummaryMessage).FontSize(sf(12.5)).FontWeight(600).
 							TextColor(pal.Text).Wrap()
 					})
 				})
@@ -1902,9 +1929,9 @@ func (a *app) syncModal(c *ui.Context, pal *Palette) {
 
 				if len(res.Errors) > 0 {
 					ui.Column(c).Padding(8).Gap(3).Radius(6).Background(pal.Warning.Alpha(0.10)).Children(func() {
-						ui.Text(c, "部分文件读取提示:").FontSize(11).Bold().TextColor(pal.WarningText)
+						ui.Text(c, "部分文件读取提示:").FontSize(sf(11)).Bold().TextColor(pal.WarningText)
 						for _, e := range res.Errors {
-							ui.Text(c, "· "+e).FontSize(10.5).TextColor(pal.TextMuted)
+							ui.Text(c, "· "+e).FontSize(sf(10.5)).TextColor(pal.TextMuted)
 						}
 					})
 				}
@@ -1933,7 +1960,7 @@ func (a *app) syncModal(c *ui.Context, pal *Palette) {
 
 func (a *app) syncStatBox(c *ui.Context, label, value string, pal *Palette) {
 	ui.Column(c).Padding(9, 12).Gap(3).Radius(7).Background(pal.Surface).Children(func() {
-		ui.Text(c, label).FontSize(10.5).TextColor(pal.TextFaint).SingleLine()
-		ui.Text(c, value).FontSize(14).FontWeight(600).TextColor(pal.Text).SingleLine()
+		ui.Text(c, label).FontSize(sf(10.5)).TextColor(pal.TextFaint).SingleLine()
+		ui.Text(c, value).FontSize(sf(14)).FontWeight(600).TextColor(pal.Text).SingleLine()
 	})
 }

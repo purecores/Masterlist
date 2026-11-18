@@ -78,7 +78,7 @@ func TestSyncSplitsCombinedDescription(t *testing.T) {
 			{"106582000", "End sleeve", "管状预绝缘头", "E7508", "ZheTian"},
 		},
 	})
-	res, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, false)
+	res, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestSyncSwappedDescriptionColumns(t *testing.T) {
 			{"143655390", "主电箱框架", "Switch Cabinet", "B1000/H2000/T500"},
 		},
 	})
-	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, false); err != nil {
+	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	parts, _, _, err := store.LoadAll(context.Background())
@@ -135,7 +135,7 @@ func TestSyncTwoPartsPerRow(t *testing.T) {
 			{"111537716", "1CO继电器套装", "111537821", "继电器座", "95.05", "Finder"},
 		},
 	})
-	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, false); err != nil {
+	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	parts, _, _, err := store.LoadAll(context.Background())
@@ -211,7 +211,7 @@ func TestSyncSkipsHelperWorkbooks(t *testing.T) {
 			{"100000001", "X"},
 		},
 	})
-	res, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, false)
+	res, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,10 +243,10 @@ func TestSyncIsIdempotent(t *testing.T) {
 		},
 	})
 	ctx := context.Background()
-	if _, err := syncExcelMasterlist(ctx, store, dir, []string{"."}, false); err != nil {
+	if _, err := syncExcelMasterlist(ctx, store, dir, []string{"."}, nil, false); err != nil {
 		t.Fatal(err)
 	}
-	res, err := syncExcelMasterlist(ctx, store, dir, []string{"."}, false)
+	res, err := syncExcelMasterlist(ctx, store, dir, []string{"."}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestSyncUpdatesSpecInPlace(t *testing.T) {
 		},
 	})
 	ctx := context.Background()
-	if _, err := syncExcelMasterlist(ctx, store, dir, []string{"."}, false); err != nil {
+	if _, err := syncExcelMasterlist(ctx, store, dir, []string{"."}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	// The same row, with the spec normalized in the file ("²" → "2").
@@ -279,7 +279,7 @@ func TestSyncUpdatesSpecInPlace(t *testing.T) {
 			{"106581800", "管状预绝缘头", "ET 0.3-6 0.25mm2", "ZheTian"},
 		},
 	})
-	res, err := syncExcelMasterlist(ctx, store, dir, []string{"."}, false)
+	res, err := syncExcelMasterlist(ctx, store, dir, []string{"."}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,11 +320,11 @@ func TestSyncReadsXLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = book
-	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, true); err != nil {
+	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, nil, true); err != nil {
 		t.Fatal(err)
 	}
 	// The fixture has no BHS columns, so only opening it is asserted here.
-	if res, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, false); err != nil {
+	if res, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, nil, false); err != nil {
 		t.Fatal(err)
 	} else if res.FilesScanned != 1 {
 		t.Fatalf("the .xls was not scanned: %+v", res)
@@ -371,7 +371,7 @@ func TestSyncRedPartNumberIsObsolete(t *testing.T) {
 	}
 	_ = f.Close()
 
-	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, false); err != nil {
+	if _, err := syncExcelMasterlist(context.Background(), store, dir, []string{"."}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	parts, _, _, err := store.LoadAll(context.Background())
@@ -386,5 +386,88 @@ func TestSyncRedPartNumberIsObsolete(t *testing.T) {
 	}
 	if !parts[0].Discontinued {
 		t.Errorf("discontinued flag not loaded")
+	}
+}
+
+// Workbooks are imported from the configured folder only: a nested folder is
+// not searched, while its own files are untouched.
+func TestCollectWorkbooksStopsAtOneLevel(t *testing.T) {
+	dir := t.TempDir()
+	top := filepath.Join(dir, "Master E-list_Top.xlsx")
+	if err := os.WriteFile(top, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(dir, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "Master E-list_Nested.xlsx"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, _, _ := collectWorkbooks(dir, []string{"."}, nil)
+	if _, ok := files["Master E-list_Nested.xlsx"]; ok {
+		t.Fatalf("a nested workbook was collected: %v", files)
+	}
+	if _, ok := files["Master E-list_Top.xlsx"]; !ok {
+		t.Fatalf("the top-level workbook is missing: %v", files)
+	}
+}
+
+// The default folders follow the production library.
+func TestDefaultFolders(t *testing.T) {
+	cfg := defaultConfig()
+	wantMaster := `W:\TD\1_部门资料 Section\TE\2.1_E Parts Database\2.1.2_Master list-总表`
+	found := false
+	for _, p := range cfg.MasterlistPaths {
+		if p == wantMaster {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("master list default missing: %v", cfg.MasterlistPaths)
+	}
+	wantPDF := []string{`D:\Knowledge\MM01\Datasheet`, `W:\TD\1_部门资料 Section\TE\2.1_E Parts Database\2.1.1_Data sheet`}
+	for _, w := range wantPDF {
+		ok := false
+		for _, p := range cfg.DatasheetPaths {
+			if p == w {
+				ok = true
+			}
+		}
+		if !ok {
+			t.Errorf("datasheet default %q missing: %v", w, cfg.DatasheetPaths)
+		}
+	}
+	if cfg.FontScale != 1.0 {
+		t.Errorf("default font scale = %v, want 1", cfg.FontScale)
+	}
+}
+
+// The appearance follows the desktop: a dark desktop selects the dark palette
+// and a light one the light palette.
+func TestThemeFollowsSystem(t *testing.T) {
+	a := newApp("data/masterlist.db", "", false)
+	a.cfg.Theme = "auto"
+	a.appReady = true
+	a.lightTheme = true // the desktop reports light
+	desktopIsDark = func() bool { return false }
+	a.applyTheme()
+	if !a.lightTheme {
+		t.Errorf("a light desktop should build with the light palette")
+	}
+	desktopIsDark = func() bool { return true }
+	a.applyTheme()
+	if a.lightTheme {
+		t.Errorf("a dark desktop should build with the dark palette")
+	}
+	a.cfg.Theme = "light"
+	a.applyTheme()
+	if !a.lightTheme {
+		t.Errorf("the light setting should build the light palette")
+	}
+	a.cfg.Theme = "dark"
+	a.applyTheme()
+	if a.lightTheme {
+		t.Errorf("the dark setting should build the dark palette")
 	}
 }

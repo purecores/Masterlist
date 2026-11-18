@@ -87,6 +87,7 @@ func main() {
 			Content:         ui.View(a.view),
 		})
 		a.win = win
+		a.appReady = true
 		// Follow the desktop's light/dark appearance, and react when it
 		// changes while the app is open.
 		mygo.Theme.SetSource(mygo.ThemeSystem)

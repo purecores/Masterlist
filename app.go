@@ -68,6 +68,7 @@ type app struct {
 	datasheetModalOpen  bool
 	datasheetPathsText  string
 	masterlistPathsText string
+	excelExcludeText    string
 	datasheetStatusMsg  string
 	settingsTab         int // 0: PDF 手册, 1: Excel 原表, 2: 常规选项
 
@@ -83,6 +84,7 @@ type app struct {
 
 	lightTheme    bool
 	systemDark    bool
+	appReady      bool
 	syncModalOpen bool
 	syncRunning   bool
 	syncDryRun    bool
@@ -775,26 +777,47 @@ func logif(format string, args ...any) {
 	log.Printf(format, args...)
 }
 
+// desktopIsDark reads the desktop's appearance. It is a variable so tests
+// can present a light or a dark desktop without one.
+var desktopIsDark = func() bool { return mygo.Theme.IsDark() }
+
+// setFontScale saves a new text size; the next frame builds with it.
+func (a *app) setFontScale(scale float64) {
+	scale = float64(clampFontScale(scale))
+	if scale == a.cfg.FontScale {
+		return
+	}
+	a.cfg.FontScale = scale
+	_ = saveConfig(a.exeDir, a.cfg)
+	a.winInvalidate()
+}
+
+func (a *app) nudgeFontScale(delta float64) {
+	a.setFontScale(a.cfg.FontScale + delta)
+}
+
 // toggleTheme walks the appearance through auto → light → dark → auto, so
 // the switch never lands in a state the setting cannot name.
 func (a *app) toggleTheme(c *ui.Context) {
+	// The toolbar button flips the appearance the user sees; following the
+	// system again is a choice in the settings.
 	switch a.cfg.Theme {
 	case "auto":
-		a.cfg.Theme = "light"
+		if a.lightTheme {
+			a.cfg.Theme = "dark"
+			c.Toast("已切换为深色外观")
+		} else {
+			a.cfg.Theme = "light"
+			c.Toast("已切换为浅色外观")
+		}
 	case "light":
 		a.cfg.Theme = "dark"
+		c.Toast("已切换为深色外观")
 	default:
-		a.cfg.Theme = "auto"
+		a.cfg.Theme = "light"
+		c.Toast("已切换为浅色外观")
 	}
 	a.applyTheme()
-	switch a.cfg.Theme {
-	case "auto":
-		c.Toast("外观跟随系统")
-	case "light":
-		c.Toast("已切换为浅色外观")
-	default:
-		c.Toast("已切换为深色外观")
-	}
 	_ = saveConfig(a.exeDir, a.cfg)
 }
 
@@ -804,13 +827,15 @@ func (a *app) toggleTheme(c *ui.Context) {
 func (a *app) applyTheme() {
 	switch a.cfg.Theme {
 	case "light":
-		a.lightTheme = false
-	case "dark":
 		a.lightTheme = true
+	case "dark":
+		a.lightTheme = false
 	default:
-		if mygo.App.IsReady() {
-			a.systemDark = mygo.Theme.IsDark()
-			a.lightTheme = a.systemDark
+		if a.appReady || mygo.App.IsReady() {
+			// Theme.IsDark reports the desktop's appearance, while the
+			// palette switch is "use the light palette", so it is inverted.
+			a.systemDark = desktopIsDark()
+			a.lightTheme = !a.systemDark
 		} else {
 			// Before the app starts, its desktop is not available; the
 			// first ready frame resolves the real appearance.
@@ -831,7 +856,7 @@ func (a *app) themeButton() (iconName, tip string) {
 	case "light":
 		return "moon", "浅色外观，点击切换为深色"
 	default:
-		return "sun", "深色外观，点击跟随系统"
+		return "sun", "深色外观，点击切换为浅色"
 	}
 }
 
@@ -880,6 +905,16 @@ func (a *app) saveDatasheetSettings(c *ui.Context) {
 		mlPaths = []string{`..\Masterlist`, `Masterlist`}
 	}
 	a.cfg.MasterlistPaths = mlPaths
+
+	// Parse excluded workbooks or folders.
+	var excluded []string
+	for _, line := range strings.Split(a.excelExcludeText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			excluded = append(excluded, trimmed)
+		}
+	}
+	a.cfg.ExcludedWorkbooks = excluded
 
 	// A configured reader must be an existing executable; a relative path is
 	// resolved against the program directory.
@@ -980,7 +1015,7 @@ func (a *app) triggerSync(c *ui.Context, dryRun bool) {
 	a.syncErr = ""
 
 	go func() {
-		res, err := syncExcelMasterlist(context.Background(), a.store, a.exeDir, a.cfg.MasterlistPaths, dryRun)
+		res, err := syncExcelMasterlist(context.Background(), a.store, a.exeDir, a.cfg.MasterlistPaths, a.cfg.ExcludedWorkbooks, dryRun)
 		if a.win != nil {
 			a.win.Update(func() {
 				a.syncRunning = false

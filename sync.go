@@ -407,7 +407,14 @@ func extensionRank(ext string) int {
 // price summaries) are not part of the library, so they are skipped and
 // counted. When one folder holds the same table as .xlsx and .xls, the .xlsx
 // is read.
-func collectWorkbooks(exeDir string, paths []string) (map[string]string, int, []string) {
+// collectWorkbooks finds Master E-list_ workbooks in the configured folders.
+// Workbooks are not searched recursively: the folders below a configured
+// folder are not visited, as the production library keeps its tables flat.
+// Helper spreadsheets in the same folder (replacement lists, icon catalogs,
+// price summaries) are not part of the library, so they are skipped and
+// counted. Excluded names and folders from the settings are left out. When
+// one folder holds the same table as .xlsx and .xls, the .xlsx is read.
+func collectWorkbooks(exeDir string, paths []string, excluded []string) (map[string]string, int, []string) {
 	candidates := map[string]workbookCandidate{}
 	skipped := 0
 	var notes []string
@@ -431,13 +438,18 @@ func collectWorkbooks(exeDir string, paths []string) (map[string]string, int, []
 			if rank == 0 {
 				continue
 			}
+			full := filepath.Join(dir, name)
+			if workbookExcluded(exeDir, name, full, excluded) {
+				skipped++
+				continue
+			}
 			if !strings.HasPrefix(strings.ToLower(name), "master e-list_") {
 				skipped++
 				continue
 			}
 			stem := normalizeSourceStem(name)
 			if cur, ok := candidates[stem]; !ok || rank > cur.rank {
-				candidates[stem] = workbookCandidate{rank: rank, path: filepath.Join(dir, name)}
+				candidates[stem] = workbookCandidate{rank: rank, path: full}
 			}
 		}
 	}
@@ -448,17 +460,50 @@ func collectWorkbooks(exeDir string, paths []string) (map[string]string, int, []
 	return files, skipped, notes
 }
 
+// workbookExcluded reports whether a workbook, by name or path, or the folder
+// holding it, is on the settings' exclusion list. A line is compared as a
+// file name, a full path, and a path prefix, so both "Master E-list_.xlsx"
+// and a full path work, as does a folder that excludes everything inside it.
+func workbookExcluded(exeDir, name, fullPath string, excluded []string) bool {
+	cleanFull := filepath.Clean(fullPath)
+	lowerFull := strings.ToLower(cleanFull)
+	for _, raw := range excluded {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		// A bare file name matches any folder's file of that name.
+		bare := filepath.Base(entry)
+		if strings.EqualFold(bare, name) && !strings.ContainsAny(entry, `/\`) {
+			return true
+		}
+		entry = filepath.Clean(entry)
+		if !filepath.IsAbs(entry) && !strings.HasPrefix(entry, `\`) {
+			entry = filepath.Join(exeDir, entry)
+		}
+		lowerEntry := strings.ToLower(entry)
+		if strings.EqualFold(entry, cleanFull) {
+			return true
+		}
+		// A folder line excludes what it holds.
+		if lowerFull == lowerEntry || strings.HasPrefix(lowerFull, lowerEntry+`\`) {
+			return true
+		}
+	}
+	return false
+}
+
 type existingImport struct {
 	id     int64
 	origin string
 	p      Part
 }
 
-func syncExcelMasterlist(ctx context.Context, store *Store, exeDir string, paths []string, dryRun bool) (*SyncResult, error) {
+func syncExcelMasterlist(ctx context.Context, store *Store, exeDir string, paths []string, excluded []string, dryRun bool) (*SyncResult, error) {
 	res := &SyncResult{DryRun: dryRun}
 	now := time.Now().Format(time.RFC3339)
 
-	files, skipped, notes := collectWorkbooks(exeDir, paths)
+	files, skipped, notes := collectWorkbooks(exeDir, paths, excluded)
 	res.FilesSkipped = skipped
 	res.Errors = append(res.Errors, notes...)
 	if len(files) == 0 {
@@ -580,7 +625,7 @@ func syncExcelMasterlist(ctx context.Context, store *Store, exeDir string, paths
 
 	skipNote := ""
 	if res.FilesSkipped > 0 {
-		skipNote = fmt.Sprintf("，跳过 %d 份非 Master E-list 表格", res.FilesSkipped)
+		skipNote = fmt.Sprintf("，跳过 %d 份非 Master E-list 表格或已排除的表格", res.FilesSkipped)
 	}
 	if dryRun {
 		res.SummaryMessage = fmt.Sprintf("检测完成：已扫描 %d 份 Master E-list 表格（%d 个工作表）%s，检测到新增 %d 件器件，更新 %d 件，无变更 %d 件，已保护手工维护 %d 件。",

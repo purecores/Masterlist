@@ -191,7 +191,7 @@ func TestSyncMasterlist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := syncExcelMasterlist(ctx, store, tmp, []string{"."}, true)
+	res, err := syncExcelMasterlist(ctx, store, tmp, []string{"."}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}

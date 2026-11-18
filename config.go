@@ -42,17 +42,30 @@ type Config struct {
 	// AutoSyncMinutes refreshes the local copy of the original workbooks and
 	// re-imports changes on this interval; 0 turns it off.
 	AutoSyncMinutes int `json:"auto_sync_minutes"`
+	// FontScale multiplies the UI text size: 1 is the default size.
+	FontScale float64 `json:"font_scale"`
+	// ExcludedWorkbooks lists workbook files, or folders, the sync leaves
+	// out. Each line is a file name or a full path; a folder line excludes
+	// every workbook inside it.
+	ExcludedWorkbooks []string `json:"excluded_workbooks"`
 }
+
+// DefaultPaths are the folders the app ships with: the production master list
+// and datasheet libraries, used until the settings name others.
+const (
+	defaultMasterlistPath = `W:\TD\1_部门资料 Section\TE\2.1_E Parts Database\2.1.2_Master list-总表`
+	defaultDatasheetA     = `D:\Knowledge\MM01\Datasheet`
+	defaultDatasheetB     = `W:\TD\1_部门资料 Section\TE\2.1_E Parts Database\2.1.1_Data sheet`
+)
 
 func defaultConfig() Config {
 	return Config{
 		DatasheetPaths: []string{
-			`..\PartPDF_merged`,
-			`PartPDF_merged`,
+			defaultDatasheetA,
+			defaultDatasheetB,
 		},
 		MasterlistPaths: []string{
-			`..\Masterlist`,
-			`Masterlist`,
+			defaultMasterlistPath,
 		},
 		Theme:                 "auto",
 		TrayEnabled:           true,
@@ -69,6 +82,8 @@ func defaultConfig() Config {
 		OpenExcelPassword:     false,
 		ExcelPassword:         "",
 		AutoSyncMinutes:       60,
+		FontScale:             1.0,
+		ExcludedWorkbooks:     nil,
 	}
 }
 
@@ -126,8 +141,14 @@ func loadConfig(exeDir string) Config {
 		}
 		cfg.PDFReaderPath = strings.TrimSpace(loaded.PDFReaderPath)
 		cfg.ExcelPassword = strings.TrimSpace(loaded.ExcelPassword)
-		if loaded.AutoSyncMinutes > 0 {
+		if loaded.AutoSyncMinutes >= 0 {
 			cfg.AutoSyncMinutes = loaded.AutoSyncMinutes
+		}
+		if loaded.FontScale >= 0.8 && loaded.FontScale <= 1.5 {
+			cfg.FontScale = loaded.FontScale
+		}
+		if len(loaded.ExcludedWorkbooks) > 0 {
+			cfg.ExcludedWorkbooks = cleanPathList(loaded.ExcludedWorkbooks)
 		}
 		if cfg.AutoSyncMinutes < 0 {
 			cfg.AutoSyncMinutes = 0

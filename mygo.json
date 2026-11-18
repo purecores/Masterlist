@@ -1,7 +1,7 @@
 {
   "name": "Masterlist",
   "identifier": "com.purecores.masterlist",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "icon": "resources/icon.png",
   "windows": {
     "displayName": "电气柜器件库"
